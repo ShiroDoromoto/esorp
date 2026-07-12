@@ -1,5 +1,7 @@
 package scan
 
+import "path/filepath"
+
 // StringSpec は文字列リテラルの1形。Open / Close が同じ引用符でも構わない。
 //
 // Rust の r#"…"# のように区切りの長さが可変のものは、この形では表せない。
@@ -52,4 +54,17 @@ func GoSpec() LangSpec {
 		TypeLikeOpeners: []string{"type", "struct", "interface"},
 		FuncOpeners:     []string{"func"},
 	}
+}
+
+// SpecFor は、ファイルの拡張子からその言語の字句を選ぶ。
+//
+// 設定の files: は glob なので、cstyle ファミリに .rs や .ts を並べることはできるが、
+// その字句をまだ持っていない。持っていないことを黙って飲み込むと、そのファイルは
+// 検査されないまま適合したように見える。引けなかったことを呼び手に返し、呼び手が告げる。
+func SpecFor(path string) (LangSpec, bool) {
+	switch filepath.Ext(path) {
+	case ".go":
+		return GoSpec(), true
+	}
+	return LangSpec{}, false
 }
