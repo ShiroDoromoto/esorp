@@ -1,0 +1,42 @@
+name: Release
+
+# 引き金は人間が引く。タグ（v*）を push したときだけ走る。merge では何も出荷しない。
+# workflow_dispatch は、同じタグを指して焼き直すための逃げ道。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # wharfy は git のタグから版を決める。浅いクローンではタグが来ない。
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: wharfy を入れる
+        run: |
+          curl -fsSL https://github.com/ShiroDoromoto/wharfy/releases/latest/download/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: 配る物を焼く
+        run: wharfy build
+
+      # 署名は macOS の identity が要る。持っていないので飛ばす（wharfy は未署名を警告どまりで通す）。
+      # 押さえている口（homebrew / scoop / apt / rpm）は、どれも署名を要求しない。
+
+      - name: GitHub Release に上げる
+        env:
+          # releases チャネルはこのリポジトリにしか書かないので、Actions が渡す token で足りる。
+          # 他リポジトリ（tap / bucket）へ書く publish は PAT が要る — #38 で足す。
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: wharfy release --yes
