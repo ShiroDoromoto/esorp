@@ -277,3 +277,13 @@ func groupText(toks []scan.Token, start, end int) string {
 	}
 	return b.String()
 }
+
+// Parse は、設定に書かれた位置クラスの名前を値にする。
+func Parse(s string) (Place, bool) {
+	for _, p := range []Place{Header, Doc, Trailing, Leading, Orphan} {
+		if p.String() == s {
+			return p, true
+		}
+	}
+	return 0, false
+}

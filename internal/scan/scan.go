@@ -56,3 +56,13 @@ type Token struct {
 	EndLine int
 	Text    string // ソースに現れたままの生テキスト（コメント記号や引用符を含む）
 }
+
+// ParseKind は、設定に書かれたコメント種別の名前を値にする。コメントの4種だけを引ける。
+func ParseKind(s string) (Kind, bool) {
+	for _, k := range []Kind{KindLine, KindBlock, KindDocLine, KindDocBlock} {
+		if k.String() == s {
+			return k, true
+		}
+	}
+	return 0, false
+}
