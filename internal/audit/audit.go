@@ -161,6 +161,9 @@ func collect(cfg *config.Config, root string, sel Selection) ([]matched, error) 
 			if trackedDirs != nil && rel != "." && !trackedDirs[rel] {
 				return fs.SkipDir
 			}
+			if rel != "." && excludedEverywhere(cfg, names, rel) {
+				return fs.SkipDir
+			}
 			return nil
 		}
 
@@ -172,7 +175,7 @@ func collect(cfg *config.Config, root string, sel Selection) ([]matched, error) 
 		}
 
 		for _, name := range names {
-			if matchAny(cfg.Syntax[name].Files, rel) {
+			if selects(cfg.Syntax[name].Files, rel) {
 				out = append(out, matched{path: rel, syntax: name})
 				break
 			}
@@ -185,14 +188,48 @@ func collect(cfg *config.Config, root string, sel Selection) ([]matched, error) 
 	return out, nil
 }
 
-// matchAny は、glob のいずれかがパスに当たるかを見る。** を含む照合は doublestar に任せる。
-func matchAny(globs []string, path string) bool {
+// selects は、glob の並びがそのパスを選ぶかを見る。「!」始まりは除外であり、正の glob に当たって
+// いても除外に当たれば落とす（vendor/ や node_modules/ のように、自分のコードでないものを外す）。
+// 除外がいつも勝つので、並べる順は結果を変えない。
+func selects(globs []string, path string) bool {
+	hit := false
 	for _, g := range globs {
-		if ok, err := doublestar.Match(g, path); err == nil && ok {
-			return true
+		if pat, ok := strings.CutPrefix(g, "!"); ok {
+			if match(pat, path) {
+				return false
+			}
+			continue
+		}
+		hit = hit || match(g, path)
+	}
+	return hit
+}
+
+// excludedEverywhere は、どの syntax エントリからも除外されているディレクトリであることを見る
+// （node_modules/** は node_modules そのものにも当たる）。そこはもう誰も読まないので、降りない。
+// 1つでも除外していないエントリがあれば降りる。走査を速くするための判断であって、拾うものを
+// 変えてはならない。
+func excludedEverywhere(cfg *config.Config, names []string, dir string) bool {
+	for _, name := range names {
+		excluded := false
+		for _, g := range cfg.Syntax[name].Files {
+			if pat, ok := strings.CutPrefix(g, "!"); ok && match(pat, dir) {
+				excluded = true
+				break
+			}
+		}
+		if !excluded {
+			return false
 		}
 	}
-	return false
+	return true
+}
+
+// match は glob 1つの照合。** を含む照合は doublestar に任せる。glob が不正でないことは、設定を
+// 読んだ時点で確かめてある。
+func match(glob, path string) bool {
+	ok, err := doublestar.Match(glob, path)
+	return err == nil && ok
 }
 
 // auditFile は、ファイル1つを読み、器 → 書式 の順に検査して違反を Result に足す（mode:

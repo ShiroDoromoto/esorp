@@ -13,6 +13,9 @@ syntax:
     family: cstyle
     files:
       - "**/*.go"
+
+      # 「!」始まりは除外。他人のコードは自分のコードとして扱わない。
+      - "!vendor/**"
     mode: structural
 
     # 許可する「器」。ここに列挙されていない器のコメントは、中身が何であれ違反。
@@ -61,6 +64,10 @@ syntax:
       - "**/*.mts"
       - "**/*.cts"
       - "**/*.tsx"
+
+      # 「!」始まりは除外。他人のコードは自分のコードとして扱わない。
+      - "!**/node_modules/**"
+      - "!**/*.d.ts"
     mode: structural
     allow:
       - place: header

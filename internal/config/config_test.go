@@ -146,6 +146,16 @@ func TestLoadErrors(t *testing.T) {
 			want: "files",
 		},
 		{
+			name: "不正な glob は、黙って何にも当たらないままにしない",
+			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\", \"src/[.go\"]\n    mode: structural\n",
+			want: "glob として不正",
+		},
+		{
+			name: "除外だけでは何も拾わない",
+			body: "syntax:\n  cstyle:\n    files: [\"!vendor/**\"]\n    mode: structural\n",
+			want: "除外",
+		},
+		{
 			name: "subject は doc のときだけ",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\n    allow:\n      - place: trailing\n        form:\n          subject: required\n",
 			want: "place: doc のときだけ",

@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/goccy/go-yaml"
 
 	"github.com/ShiroDoromoto/esorp/internal/place"
@@ -213,9 +214,7 @@ func validateSyntax(name string, s Syntax, add func(string, ...any)) {
 	if !slices.Contains(knownFamilies, family) {
 		add("%s.family: %q を読むスキャナがありません（今あるのは %s）", at, family, strings.Join(knownFamilies, " / "))
 	}
-	if len(s.Files) == 0 {
-		add("%s.files: 必須です（このファミリのスキャナで読むファイルの glob）", at)
-	}
+	validateFiles(at, s.Files, add)
 
 	switch s.Mode {
 	case "structural":
@@ -230,6 +229,32 @@ func validateSyntax(name string, s Syntax, add func(string, ...any)) {
 		add("%s.mode: 必須です（structural | content-only）", at)
 	default:
 		add("%s.mode: %q は不明です（structural | content-only）", at, s.Mode)
+	}
+}
+
+// validateFiles は files: の glob を検める。「!」始まりは除外。不正な glob はどのパスにも当たらない
+// ので、通してしまうと、そのファイル群は検査されないまま適合したように見える。除外だけを並べた
+// files: も同じ（何も拾わない）。
+func validateFiles(at string, files []string, add func(string, ...any)) {
+	if len(files) == 0 {
+		add("%s.files: 必須です（このファミリのスキャナで読むファイルの glob）", at)
+		return
+	}
+
+	positives := 0
+	for i, g := range files {
+		pat, excluded := strings.CutPrefix(g, "!")
+		switch {
+		case pat == "":
+			add("%s.files[%d]: 空の glob です", at, i)
+		case !doublestar.ValidatePattern(pat):
+			add("%s.files[%d]: %q は glob として不正です", at, i, g)
+		case !excluded:
+			positives++
+		}
+	}
+	if positives == 0 {
+		add("%s.files: 除外（! 始まり）だけでは、どのファイルにも当たりません", at)
 	}
 }
 
