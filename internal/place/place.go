@@ -244,8 +244,9 @@ func declName(toks []scan.Token, i int, spec scan.LangSpec) string {
 	return ""
 }
 
-// skipAttrs は、宣言の前に置かれた属性（Rust の #[…] / #![…]）を飛ばし、宣言そのものの
-// 先頭を返す。属性の形をしていなければ、名前は取り出せない（len(toks) を返す）。
+// skipAttrs は、宣言の前に置かれた属性（Rust の #[…] / #![…]、TS の @Decorator(…)）を飛ばし、
+// 宣言そのものの先頭を返す。属性の形をしていなければ、名前は取り出せない（len(toks) を返す）。
+// 記号の直後の「!」は Rust の内側属性（#![…]）。
 func skipAttrs(toks []scan.Token, i int, spec scan.LangSpec) int {
 	for i < len(toks) && isDeclPrefix(toks[i], spec) {
 		i++
@@ -256,7 +257,24 @@ func skipAttrs(toks []scan.Token, i int, spec scan.LangSpec) int {
 			i = skipGroup(toks, i, "[", "]")
 			continue
 		}
+		if i < len(toks) && toks[i].Kind == scan.KindWord {
+			i = skipDecorator(toks, i)
+			continue
+		}
 		return len(toks)
+	}
+	return i
+}
+
+// skipDecorator は、属性の名前（a.b の形もある）と、あれば引数の括弧を飛ばす。空白を挟まずに
+// 続くものだけを見るので、次の行に来る宣言そのものを食べない。
+func skipDecorator(toks []scan.Token, i int) int {
+	i++
+	for i+1 < len(toks) && isPunct(toks[i], ".") && adjacent(toks, i) && toks[i+1].Kind == scan.KindWord {
+		i += 2
+	}
+	if i < len(toks) && isPunct(toks[i], "(") && adjacent(toks, i) {
+		i = skipGroup(toks, i, "(", ")")
 	}
 	return i
 }

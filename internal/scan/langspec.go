@@ -21,6 +21,10 @@ type StringSpec struct {
 	// Rust のライフタイム 'a は文字リテラルではなく、これを取り違えると同じ行の
 	// 後ろにあるコメントを文字列の中に飲み込む。
 	OneRune bool
+
+	// Interp は、文字列の中でコードに戻る記法の開き（TS のテンプレートリテラルの「${」）。
+	// 中は再びコードなので、そこに現れるコメントはコメントとして読む。
+	Interp string
 }
 
 // openAt は、src の pos がこの形の開きに当たるなら、開きのバイト数と、それに対応する
@@ -125,8 +129,33 @@ func RustSpec() LangSpec {
 	}
 }
 
+// TSSpec は TypeScript の字句。doc 専用記法は JSDoc（/** … */）だけで、行の doc 記法は無い。
+// テンプレートリテラルの ${ … } の中は再びコードなので、StringSpec.Interp で受ける。
+func TSSpec() LangSpec {
+	return LangSpec{
+		Name:        "typescript",
+		LineComment: "//",
+		BlockOpen:   "/*",
+		BlockClose:  "*/",
+		BlockNests:  false,
+		DocBlock:    []string{"/**"},
+		Strings: []StringSpec{
+			{Open: `"`, Close: `"`, Escape: true},
+			{Open: "'", Close: "'", Escape: true},
+			{Open: "`", Close: "`", Escape: true, Multiline: true, Interp: "${"},
+		},
+		DeclKeywords: []string{
+			"function", "class", "interface", "enum", "type",
+			"const", "let", "var", "export", "import", "declare", "namespace",
+		},
+		TypeLikeOpeners: []string{"class", "interface", "enum", "namespace"},
+		FuncOpeners:     []string{"function"},
+		DeclPrefixes:    []string{"@"},
+	}
+}
+
 // SpecFor は、ファイルの拡張子からその言語の字句を選ぶ。設定の files: は glob なので、
-// cstyle ファミリに .ts を並べることはできるが、その字句をまだ持っていない。持っていないことを
+// cstyle ファミリに .tsx を並べることはできるが、その字句をまだ持っていない。持っていないことを
 // 黙って飲み込むと、そのファイルは検査されないまま適合したように見えるので、引けなかったことを
 // 呼び手に返し、呼び手が告げる。
 func SpecFor(path string) (LangSpec, bool) {
@@ -135,6 +164,8 @@ func SpecFor(path string) (LangSpec, bool) {
 		return GoSpec(), true
 	case ".rs":
 		return RustSpec(), true
+	case ".ts", ".mts", ".cts":
+		return TSSpec(), true
 	}
 	return LangSpec{}, false
 }

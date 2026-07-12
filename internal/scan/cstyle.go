@@ -27,18 +27,23 @@ type cstyleScanner struct {
 
 func (s *cstyleScanner) scan() []Token {
 	for s.pos < len(s.src) {
-		switch c := s.src[s.pos]; {
-		case c == '\n':
-			s.newline()
-		case c == ' ' || c == '\t' || c == '\r':
-			s.pos++
-		case s.tryComment():
-		case s.tryString():
-		default:
-			s.wordOrPunct()
-		}
+		s.scanOnce()
 	}
 	return s.toks
+}
+
+// scanOnce は、現在位置からトークンを1つ読む（補間の中もここを通る）。
+func (s *cstyleScanner) scanOnce() {
+	switch c := s.src[s.pos]; {
+	case c == '\n':
+		s.newline()
+	case c == ' ' || c == '\t' || c == '\r':
+		s.pos++
+	case s.tryComment():
+	case s.tryString():
+	default:
+		s.wordOrPunct()
+	}
 }
 
 func (s *cstyleScanner) tryComment() bool {
@@ -109,10 +114,66 @@ func (s *cstyleScanner) tryString() bool {
 		if sp.OneRune && !s.oneRune(sp, n, close) {
 			continue
 		}
+		if sp.Interp != "" {
+			s.template(sp, n)
+			return true
+		}
 		s.stringLit(sp, n, close)
 		return true
 	}
 	return false
+}
+
+// template は、補間を持つ文字列（TS のテンプレートリテラル）を読む。${ … } の中は再びコード
+// なので、文字列として飲み込むことはできない（中にコメントも文字列も現れうるし、そこに現れた
+// 「}」がテンプレートを閉じるとも限らない）。そこで、文字列の部分を片ごとに出し、補間の中は
+// スキャナ本体を回し直して読む。テンプレートの入れ子は、その再帰で解ける。
+func (s *cstyleScanner) template(sp StringSpec, n int) {
+	start, line, col := s.pos, s.line, s.col()
+	s.pos += n
+
+	for s.pos < len(s.src) {
+		switch {
+		case s.src[s.pos] == '\n':
+			s.newline()
+		case sp.Escape && s.src[s.pos] == '\\' && s.pos+1 < len(s.src):
+			s.pos++
+			if s.src[s.pos] == '\n' {
+				s.newline()
+			} else {
+				s.pos++
+			}
+		case s.has(sp.Interp):
+			s.pos += len(sp.Interp)
+			s.emit(KindString, line, col, s.line, string(s.src[start:s.pos]))
+			s.interp()
+			start, line, col = s.pos, s.line, s.col()
+		case s.has(sp.Close):
+			s.pos += len(sp.Close)
+			s.emit(KindString, line, col, s.line, string(s.src[start:s.pos]))
+			return
+		default:
+			s.pos++
+		}
+	}
+	s.emit(KindString, line, col, s.line, string(s.src[start:s.pos]))
+}
+
+// interp は、補間の中をコードとして読み、対応する「}」の手前で戻る（その「}」は、続く
+// 文字列の片の先頭になる）。中括弧の深さは、コメントと文字列を読み飛ばしてから数える。
+func (s *cstyleScanner) interp() {
+	depth := 1
+	for s.pos < len(s.src) {
+		switch s.src[s.pos] {
+		case '}':
+			if depth--; depth == 0 {
+				return
+			}
+		case '{':
+			depth++
+		}
+		s.scanOnce()
+	}
 }
 
 // oneRune は、開きの引用符が1文字（またはエスケープ列1つ）だけを囲んで閉じるかを見る。これを
