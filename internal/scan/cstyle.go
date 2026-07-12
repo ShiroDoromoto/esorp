@@ -41,6 +41,7 @@ func (s *cstyleScanner) scanOnce() {
 		s.pos++
 	case s.tryComment():
 	case s.tryString():
+	case s.tryJSX():
 	default:
 		s.wordOrPunct()
 	}

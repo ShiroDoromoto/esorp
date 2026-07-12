@@ -100,6 +100,14 @@ type LangSpec struct {
 
 	// DeclPrefixes は、宣言の前に置かれる記号（Rust の属性 #[…]）。宣言の一部として扱う。
 	DeclPrefixes []string
+
+	// JSX は、タグ（<div> … </div>）の中身をテキストとして読むか。テキストの中の // はコメント
+	// ではなく、' は文字列を開かない。
+	JSX bool
+
+	// ExprKeywords は、その直後から式が始まりうるキーワード（return / await …）。JSX の「<」が
+	// 要素を開くのか比較・ジェネリクスなのかは、直前のトークンでしか当たりを付けられない。
+	ExprKeywords []string
 }
 
 // GoSpec は Go の字句。Go には doc 専用記法が無く、doc コメントとは「宣言の直前に置かれた //」の
@@ -175,10 +183,24 @@ func TSSpec() LangSpec {
 	}
 }
 
-// SpecFor は、ファイルの拡張子からその言語の字句を選ぶ。設定の files: は glob なので、
-// cstyle ファミリに .tsx を並べることはできるが、その字句をまだ持っていない。持っていないことを
-// 黙って飲み込むと、そのファイルは検査されないまま適合したように見えるので、引けなかったことを
-// 呼び手に返し、呼び手が告げる。
+// TSXSpec は TSX（.tsx）の字句。TS との差は JSX ひとつで、字句としては「タグの中身はテキストで
+// あって、コードでも文字列でもない」ことに尽きる。ExprKeywords は、その「<」が要素を開くのか
+// 比較・ジェネリクスなのかを見分けるために要る（TSX の難所）。
+func TSXSpec() LangSpec {
+	spec := TSSpec()
+	spec.Name = "tsx"
+	spec.JSX = true
+	spec.ExprKeywords = []string{
+		"return", "yield", "await", "throw", "case", "default",
+		"do", "else", "in", "of", "new", "typeof", "void", "delete",
+	}
+	return spec
+}
+
+// SpecFor は、ファイルの拡張子からその言語の字句を選ぶ。設定の files: は glob なので、字句を
+// 持たない拡張子を cstyle ファミリに並べることもできる。持っていないことを黙って飲み込むと、
+// そのファイルは検査されないまま適合したように見えるので、引けなかったことを呼び手に返し、
+// 呼び手が告げる。
 func SpecFor(path string) (LangSpec, bool) {
 	switch filepath.Ext(path) {
 	case ".go":
@@ -187,6 +209,8 @@ func SpecFor(path string) (LangSpec, bool) {
 		return RustSpec(), true
 	case ".ts", ".mts", ".cts":
 		return TSSpec(), true
+	case ".tsx":
+		return TSXSpec(), true
 	}
 	return LangSpec{}, false
 }

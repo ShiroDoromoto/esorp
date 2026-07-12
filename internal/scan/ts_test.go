@@ -97,14 +97,16 @@ func TestCStyleTS(t *testing.T) {
 	}
 }
 
-// TestSpecForTS は、TSX の字句をまだ持っていないことを押さえる。JSX テキストの中の // は
-// コメントではなく、それを見分けるには JSX の追跡が要る。持っていないものを持っているふりを
-// すると、.tsx が検査されないまま適合したように見える。
+// TestSpecForTS は、.ts と .tsx が別の字句を引くことを押さえる。.tsx に TS の字句を当てると、
+// JSX テキストの中の // を行コメントと読む。
 func TestSpecForTS(t *testing.T) {
 	if spec, ok := SpecFor("src/app.ts"); !ok || spec.Name != "typescript" {
 		t.Errorf("SpecFor(.ts) = %q, %v; want typescript, true", spec.Name, ok)
 	}
-	if _, ok := SpecFor("src/app.tsx"); ok {
-		t.Error("SpecFor(.tsx) が字句を返した。JSX を読めないうちは、読めないと告げる")
+	if spec, ok := SpecFor("src/app.tsx"); !ok || spec.Name != "tsx" || !spec.JSX {
+		t.Errorf("SpecFor(.tsx) = %q, %v; want tsx, true", spec.Name, ok)
+	}
+	if _, ok := SpecFor("src/app.js"); ok {
+		t.Error("SpecFor(.js) が字句を返した。持っていない字句は、持っていないと告げる")
 	}
 }
