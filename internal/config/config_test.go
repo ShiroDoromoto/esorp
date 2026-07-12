@@ -36,6 +36,8 @@ disposition:
   place-not-allowed: |
     この位置のコメントは許可されていません。
 
+respect_gitignore: true
+
 rules: []
 
 baseline: .esorp-baseline.json
@@ -71,6 +73,9 @@ func TestLoadTemplate(t *testing.T) {
 	}
 	if cfg.Baseline != ".esorp-baseline.json" {
 		t.Errorf("baseline = %q", cfg.Baseline)
+	}
+	if !cfg.RespectGitignore {
+		t.Error("respect_gitignore = false, want true")
 	}
 	if len(cfg.Rules) != 0 {
 		t.Errorf("rules = %v, want 空", cfg.Rules)

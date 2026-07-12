@@ -130,19 +130,22 @@ type matched struct {
 // なら、1行も当たらないファイルは読まない。1つのファイルが複数の syntax エントリに当たったときは、
 // 名前順で最初のものを採る。設定の書き手が重なりを作らない限り起きないが、起きたときに走査の
 // 結果が揺れないようにする。.git の中はソースではないので、設定で除外させるまでもなく落とす。
+// respect_gitignore: true なら、git が自分のものとして見ていないファイルも落とす（git リポジトリ
+// でなければ、この指定は効かない）。
 func collect(cfg *config.Config, root string, sel Selection) ([]matched, error) {
 	names := slices.Sorted(maps.Keys(cfg.Syntax))
+
+	var tracked, trackedDirs map[string]bool
+	if cfg.RespectGitignore {
+		if f, ok := gitFiles(root); ok {
+			tracked, trackedDirs = f, gitDirs(f)
+		}
+	}
 
 	var out []matched
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
-		}
-		if d.IsDir() {
-			if d.Name() == ".git" {
-				return fs.SkipDir
-			}
-			return nil
 		}
 
 		rel, err := filepath.Rel(root, p)
@@ -150,6 +153,20 @@ func collect(cfg *config.Config, root string, sel Selection) ([]matched, error) 
 			return err
 		}
 		rel = filepath.ToSlash(rel)
+
+		if d.IsDir() {
+			if d.Name() == ".git" {
+				return fs.SkipDir
+			}
+			if trackedDirs != nil && rel != "." && !trackedDirs[rel] {
+				return fs.SkipDir
+			}
+			return nil
+		}
+
+		if tracked != nil && !tracked[rel] {
+			return nil
+		}
 		if !sel.touches(rel) {
 			return nil
 		}

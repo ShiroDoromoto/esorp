@@ -36,6 +36,11 @@ type Config struct {
 	Disposition map[string]string `yaml:"disposition"`
 	Rules       []Rule            `yaml:"rules"`
 	Baseline    string            `yaml:"baseline"`
+
+	// RespectGitignore は、gitignore されたものを走査から外すか。git が「自分のコードではない」と
+	// 宣言しているものを、esorp も自分のコードとして扱わない。gitignore を黙って見にいくのは設定に
+	// 見えない挙動になるので、方針としてここに書かせる。git リポジトリでなければ効かない。
+	RespectGitignore bool `yaml:"respect_gitignore"`
 }
 
 // Syntax は構文ファミリごとのエントリ。キーが cstyle のようなファミリ名そのものであれば

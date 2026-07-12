@@ -318,3 +318,56 @@ func TestCheckDiffUntrackedFile(t *testing.T) {
 		t.Errorf("新しいファイルの違反を拾えていない:\n%s", stdout.String())
 	}
 }
+
+// TestCheckRespectsGitignore は、respect_gitignore: true のとき、gitignore された場所を走査から
+// 外すことを確かめる。git が「自分のコードではない」と宣言しているものを、esorp も自分のコードと
+// して扱わない。
+func TestCheckRespectsGitignore(t *testing.T) {
+	cfgPath := gitTree(t, testConfig+"respect_gitignore: true\n", "// ファイル冒頭。\npackage p\n")
+	dir := filepath.Dir(cfgPath)
+
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("vendor/\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "vendor"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "vendor", "v.go"), []byte(testSource), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout strings.Builder
+	if got := run([]string{"check", "--config", cfgPath}, &stdout, io.Discard); got != exitOK {
+		t.Fatalf("gitignore された vendor/ を見てしまっている: %d\n%s", got, stdout.String())
+	}
+}
+
+// TestCheckIgnoresGitignoreWhenNotRepo は、git リポジトリでないツリーでも respect_gitignore: true が
+// 壊れないことを確かめる（尊重できないだけで、走査は続く）。
+func TestCheckIgnoresGitignoreWhenNotRepo(t *testing.T) {
+	cfgPath := tree(t, testConfig+"respect_gitignore: true\n", testSource)
+	if got := run([]string{"check", "--config", cfgPath}, io.Discard, io.Discard); got != exitViolated {
+		t.Errorf("git の無いツリーで走査が止まっている: %d", got)
+	}
+}
+
+// TestCheckWithoutRespectGitignore は、respect_gitignore を書かなければ gitignore された場所も
+// 走査することを確かめる（設定に書かれていないものは効かない）。
+func TestCheckWithoutRespectGitignore(t *testing.T) {
+	cfgPath := gitTree(t, testConfig, "// ファイル冒頭。\npackage p\n")
+	dir := filepath.Dir(cfgPath)
+
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("vendor/\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "vendor"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "vendor", "v.go"), []byte(testSource), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := run([]string{"check", "--config", cfgPath}, io.Discard, io.Discard); got != exitViolated {
+		t.Errorf("respect_gitignore 無しで vendor/ が落ちている: %d", got)
+	}
+}
