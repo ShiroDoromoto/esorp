@@ -38,7 +38,8 @@ func Form(c place.Comment, f *config.Form, disp map[string]string, spec scan.Lan
 	if f == nil {
 		return nil
 	}
-	body := scan.Body(c.Text, spec)
+	lines := scan.BodyLines(c.Text, spec)
+	body := strings.Join(lines, "\n")
 
 	var out []Violation
 	add := func(id string) {
@@ -50,22 +51,32 @@ func Form(c place.Comment, f *config.Form, disp map[string]string, spec scan.Lan
 	if f.Subject == "required" && c.Decl != "" && !startsWithDecl(body, c.Decl) {
 		add(FormSubject)
 	}
-	if f.Headings == "deny" && headingRe.MatchString(body) {
+	if f.Headings == "deny" && hasHeading(lines) {
 		add(FormHeadings)
 	}
-	if f.Paragraphs != nil && paragraphs(body) > *f.Paragraphs {
+	if f.Paragraphs != nil && paragraphs(lines) > *f.Paragraphs {
 		add(FormParagraphs)
 	}
 	if f.Refs == "deny" && refRe.MatchString(body) {
 		add(FormRefs)
 	}
-	if f.MaxLines != nil && lines(body) > *f.MaxLines {
+	if f.MaxLines != nil && len(lines) > *f.MaxLines {
 		add(FormMaxLines)
 	}
 	if f.URLs == "deny" && urlRe.MatchString(body) {
 		add(FormURLs)
 	}
 	return out
+}
+
+// hasHeading は、見出しの行があるかを見る。コードブロックの中の「#」は見出しではない。
+func hasHeading(lines []string) bool {
+	for _, line := range lines {
+		if !scan.IsCodeLine(line) && headingRe.MatchString(line) {
+			return true
+		}
+	}
+	return false
 }
 
 // startsWithDecl は、本文の1行目が宣言の名前で始まるかを見る。
@@ -85,26 +96,21 @@ func startsWithDecl(body, decl string) bool {
 	return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_'
 }
 
-// paragraphs は、空行で区切られた塊の数を数える。
-func paragraphs(body string) int {
+// paragraphs は、空行で区切られた塊のうち、散文の段落の数を数える。
+// 字下げされたコードブロックは散文ではないので数えず、箇条書きは散文として数える。
+func paragraphs(lines []string) int {
 	n := 0
-	in := false
-	for _, line := range strings.Split(body, "\n") {
+	counted := false
+
+	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
-			in = false
+			counted = false
 			continue
 		}
-		if !in {
+		if !counted && !scan.IsCodeLine(line) {
+			counted = true
 			n++
-			in = true
 		}
 	}
 	return n
-}
-
-func lines(body string) int {
-	if body == "" {
-		return 0
-	}
-	return strings.Count(body, "\n") + 1
 }

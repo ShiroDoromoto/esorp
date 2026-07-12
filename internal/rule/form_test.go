@@ -125,6 +125,72 @@ func TestForm(t *testing.T) {
 	}
 }
 
+// TestFormParagraphsCountsProseOnly は、散文の段落だけが数えられることを確かめる。
+func TestFormParagraphsCountsProseOnly(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want []string
+	}{
+		{
+			name: "字下げされたコードブロックは段落と数えない（出力例を doc に置ける）",
+			src: "package p\n\n" +
+				"// Text は、人間向けの出力を書く。\n" +
+				"//\n" +
+				"//\ta.go:42:2  place-not-allowed\n" +
+				"//\t  // 以前はこうだった\n" +
+				"func Text() {}\n",
+		},
+		{
+			name: "箇条書きは散文として数える（背景の逃げ場にしない）",
+			src: "package p\n\n" +
+				"// Text は、人間向けの出力を書く。\n" +
+				"//\n" +
+				"// - もともとは JSON だけだった\n" +
+				"// - 今は text も出す\n" +
+				"func Text() {}\n",
+			want: []string{"form-paragraphs 3"},
+		},
+		{
+			name: "空白での字下げはコードブロックと認めない（ずらすだけで抜けられてしまう）",
+			src: "package p\n\n" +
+				"// Text は、人間向けの出力を書く。\n" +
+				"//\n" +
+				"//   もともとは JSON だけだった。\n" +
+				"func Text() {}\n",
+			want: []string{"form-paragraphs 3"},
+		},
+		{
+			name: "コードブロックのあとに散文の段落を足せば、それは数える",
+			src: "package p\n\n" +
+				"// Text は、人間向けの出力を書く。\n" +
+				"//\n" +
+				"//\ta.go:42:2  place-not-allowed\n" +
+				"//\n" +
+				"// もともとは JSON だけだった。\n" +
+				"func Text() {}\n",
+			want: []string{"form-paragraphs 3"},
+		},
+		{
+			name: "コードブロックの中の # は見出しではない",
+			src: "package p\n\n" +
+				"// Text は、人間向けの出力を書く。\n" +
+				"//\n" +
+				"//\t# これはシェルのコメント\n" +
+				"func Text() {}\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := form(t, tt.src, templateForm())
+			if strings.Join(got, ", ") != strings.Join(tt.want, ", ") {
+				t.Errorf("違反 = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // form: を書かなければ書式は問わない。省略したものは検査しない。
 func TestFormOmitted(t *testing.T) {
 	src := "package p\n\n// # 見出しも #42 も段落も、\n//\n// form が無ければ問われない。\nfunc Open() {}\n"
