@@ -1,6 +1,10 @@
 package scan
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+	"unicode/utf8"
+)
 
 // Body は、コメントの生テキストから記号を剥がして本文だけにする。剥がすのは、行コメント・ブロック
 // コメント・doc 記法の記号と、ブロックコメントの継ぎ行に添えられる「*」、そして前後の空白と、
@@ -60,6 +64,68 @@ func BodyLines(text string, spec LangSpec) []string {
 		lines = lines[:len(lines)-1]
 	}
 	return lines
+}
+
+// Unwrap は、折り返しで途切れた本文を、段落ごとに1行へ畳む。語彙のルール（層2）は正規表現を本文
+// （Body）に当てるので、畳まないと「no longer」が「no\nlonger」で途切れて当たらず、検査したのに
+// 通ったように見える。継ぎ目に空白を挟むかは両側の文字で決め、両側とも東アジアの全角なら挟まない
+// （日本語の折り返しは空白を伴わないので、「かつ\nて」は「かつて」に戻る）。空行は段落の区切りと
+// して残り、畳んだ段落を隔てる改行になる。呼ぶのは照合の直前だけで、baseline のキーが見る本文は
+// Body のままなので、既存のキーは動かない。
+func Unwrap(body string) string {
+	var paragraphs []string
+	var b strings.Builder
+	flush := func() {
+		if b.Len() > 0 {
+			paragraphs = append(paragraphs, b.String())
+			b.Reset()
+		}
+	}
+
+	for _, line := range strings.Split(body, "\n") {
+		if line == "" {
+			flush()
+			continue
+		}
+		if b.Len() > 0 && needsSpace(lastRune(b.String()), firstRune(line)) {
+			b.WriteString(" ")
+		}
+		b.WriteString(line)
+	}
+	flush()
+	return strings.Join(paragraphs, "\n")
+}
+
+// needsSpace は、折り返しの継ぎ目に空白を挟むかを返す。両側とも全角のときだけ挟まない。
+func needsSpace(prev, next rune) bool {
+	return !(isWide(prev) && isWide(next))
+}
+
+// isWide は、折り返しの継ぎ目に空白を伴わない文字（東アジアの全角）であることを表す。漢字・かな・
+// ハングルは Unicode の script が持っているので、そのまま借りる。
+func isWide(r rune) bool {
+	return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul, wideSymbols)
+}
+
+// wideSymbols は、script では拾えない全角の記号（約物「、。」、長音「ー」、全角形）。これらの script
+// は Common であり、ラテン文字と同じ扱いになってしまう。
+var wideSymbols = &unicode.RangeTable{
+	R16: []unicode.Range16{
+		{Lo: 0x3000, Hi: 0x303F, Stride: 1},
+		{Lo: 0x30FB, Hi: 0x30FC, Stride: 1},
+		{Lo: 0xFF00, Hi: 0xFF60, Stride: 1},
+		{Lo: 0xFFE0, Hi: 0xFFE6, Stride: 1},
+	},
+}
+
+func lastRune(s string) rune {
+	r, _ := utf8.DecodeLastRuneInString(s)
+	return r
+}
+
+func firstRune(s string) rune {
+	r, _ := utf8.DecodeRuneInString(s)
+	return r
 }
 
 // IsCodeLine は、doc の中のコードブロックの行であることを表す。見分けるのはタブだけ。

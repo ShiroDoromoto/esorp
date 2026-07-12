@@ -101,3 +101,48 @@ func TestLexiconWhere(t *testing.T) {
 		})
 	}
 }
+
+// TestLexiconWrapped は、折り返しで途切れた句に当たることを見る。80桁で折り返す流儀のコメントは、
+// 句が改行をまたぐ。当たらないまま通すと、検査したのに適合したように見える。
+func TestLexiconWrapped(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want int
+	}{
+		{
+			"英語の句が行をまたぐ",
+			"package p\n\n// G does not do this no\n// longer.\nfunc G() {}\n",
+			1,
+		},
+		{
+			"日本語の句が行をまたぐ",
+			"package p\n\n// F はかつ\n// て同期だった。\nfunc F() {}\n",
+			1,
+		},
+		{
+			"折り返していない句には今までどおり当たる",
+			"package p\n\n// F はかつて同期だった。\nfunc F() {}\n",
+			1,
+		},
+		{
+			"句を含まないコメントには当たらない",
+			"package p\n\n// G は値を返す。\nfunc G() int { return 1 }\n",
+			0,
+		},
+		{
+			"段落をまたいだ語のつながりには当たらない",
+			"package p\n\n// F は no\n//\n// longer を含む段落を持つ。\nfunc F() {}\n",
+			0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := lexicon(t, tt.src, history(t), Target{Syntax: "cstyle", Path: "a.go"})
+			if len(got) != tt.want {
+				t.Errorf("違反 = %d 件, want %d\n%#v", len(got), tt.want, got)
+			}
+		})
+	}
+}
