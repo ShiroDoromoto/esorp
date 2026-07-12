@@ -12,7 +12,8 @@ func entry(path, id, body string, occ int) Entry {
 	return Entry{Key: Key(path, id, body, occ), Path: path, ID: id}
 }
 
-// キーは、パス・違反 id・本文・出現順のどれが変わっても変わる。行番号は含まない。
+// TestKey は、パス・違反 id・本文・出現順のどれが変わってもキーが変わることを確かめる。行番号は
+// 含まない。
 func TestKey(t *testing.T) {
 	base := Key("a.go", "place-not-allowed", "以前はこうだった。", 0)
 
@@ -35,7 +36,8 @@ func TestKey(t *testing.T) {
 	}
 }
 
-// ラチェットは減る方向にしか動かない。
+// TestRatchet は、ラチェットが減る方向にしか動かないことと、書き出しがキー順に並ぶこと（差分が
+// 読めるように）を確かめる。
 func TestRatchet(t *testing.T) {
 	old := entry("a.go", "place-not-allowed", "古い違反。", 0)
 	fixed := entry("a.go", "place-not-allowed", "直した違反。", 0)
@@ -52,13 +54,12 @@ func TestRatchet(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("--allow-new なら新しい違反も載るはず: %#v", got)
 	}
-	// キー順に並ぶこと（差分が読めるように）。
 	if !slices.IsSortedFunc(got, func(x, y Entry) int { return strings.Compare(x.Key, y.Key) }) {
 		t.Errorf("キーでソートされていない: %#v", got)
 	}
 }
 
-// 書いて読み戻せる。ファイルが無いのはエラーではない。
+// TestSaveLoad は、書いて読み戻せることを確かめる。ファイルが無いのはエラーではない。
 func TestSaveLoad(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".esorp-baseline.json")
 
@@ -84,7 +85,8 @@ func TestSaveLoad(t *testing.T) {
 	}
 }
 
-// 読めない version は設定エラーとして返す（黙って空として扱わない）。
+// TestLoadRejectsUnknownVersion は、読めない version を設定エラーとして返すことを確かめる
+// （黙って空として扱わない）。
 func TestLoadRejectsUnknownVersion(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".esorp-baseline.json")
 	if err := os.WriteFile(path, []byte(`{"version":99,"entries":[]}`), 0o600); err != nil {

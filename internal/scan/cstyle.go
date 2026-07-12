@@ -6,23 +6,23 @@ import (
 	"unicode/utf8"
 )
 
-// CStyle は cstyle ファミリ（// と /* */ ＋ doc 記法）の字句解析器。
-// 言語差はすべて spec が持ち、この関数自体は言語を知らない。
-//
-// 不正なソース（閉じていないブロックコメントや文字列）でもエラーにせず、
-// そのトークンを EOF まで伸ばして返す。監査ツールであって、コンパイラではない。
+// CStyle は cstyle ファミリ（// と /* */ ＋ doc 記法）の字句解析器。言語差はすべて spec が持ち、
+// この関数自体は言語を知らない。不正なソース（閉じていないブロックコメントや文字列）でもエラーに
+// せず、そのトークンを EOF まで伸ばして返す。監査ツールであって、コンパイラではない。
 func CStyle(src []byte, spec LangSpec) []Token {
 	s := &cstyleScanner{src: src, spec: spec, line: 1}
 	return s.scan()
 }
 
 type cstyleScanner struct {
-	src       []byte
-	spec      LangSpec
-	toks      []Token
-	pos       int
-	line      int
-	lineStart int // 現在行の先頭のバイト位置。列を出すのに使う
+	src  []byte
+	spec LangSpec
+	toks []Token
+	pos  int
+	line int
+
+	// lineStart は現在行の先頭のバイト位置。列を出すのに使う。
+	lineStart int
 }
 
 func (s *cstyleScanner) scan() []Token {
@@ -46,15 +46,16 @@ func (s *cstyleScanner) scanOnce() {
 	}
 }
 
+// tryComment は、現在位置がコメントの開きなら、その1つを読む。doc 記法は行/ブロックコメント記法を
+// 接頭辞に含む（/// は // で始まる）ので先に照合し、開いてすぐ閉じるもの（/**/）は空のブロック
+// コメントであって doc ではないので、doc 記法に食わせない。
 func (s *cstyleScanner) tryComment() bool {
-	// doc 記法は行/ブロックコメント記法を接頭辞に含む（/// は // で始まる）ので、先に照合する。
 	for _, p := range s.spec.DocLine {
 		if s.hasDoc(p) {
 			s.lineComment(KindDocLine)
 			return true
 		}
 	}
-	// /**/ は空のブロックコメントであって doc ではない（TS の /** に食わせない）。
 	if !s.has(s.spec.BlockOpen + s.spec.BlockClose) {
 		for _, p := range s.spec.DocBlock {
 			if s.hasDoc(p) {
@@ -198,7 +199,8 @@ func (s *cstyleScanner) oneRune(sp StringSpec, n int, close string) bool {
 }
 
 // stringLit は、開きの長さ n と、それに対応する閉じ記号を受けて文字列リテラルを1つ読む
-// （閉じ記号が開きに依るのは Rust の r#"…"# のような可変長の区切りがあるため）。
+// （閉じ記号が開きに依るのは Rust の r#"…"# のような可変長の区切りがあるため）。改行を含められない
+// 形が閉じずに行末に来たら、不正なソースなので、そこで打ち切る。
 func (s *cstyleScanner) stringLit(sp StringSpec, n int, close string) {
 	start, line, col := s.pos, s.line, s.col()
 	s.pos += n
@@ -208,7 +210,6 @@ func (s *cstyleScanner) stringLit(sp StringSpec, n int, close string) {
 		switch {
 		case c == '\n':
 			if !sp.Multiline {
-				// 閉じずに行が終わった。不正なソースなので、行末で打ち切る。
 				s.emit(KindString, line, col, s.line, string(s.src[start:s.pos]))
 				return
 			}

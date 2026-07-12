@@ -9,7 +9,7 @@ import (
 	"github.com/ShiroDoromoto/esorp/internal/scan"
 )
 
-// テンプレートの既定と同じ器。header / doc / ラベル付きの trailing だけを許し、
+// templateAllows は、テンプレートの既定と同じ器。header / doc / ラベル付きの trailing だけを許し、
 // leading と orphan は許さない。
 func templateAllows() []config.Allow {
 	return []config.Allow{
@@ -42,7 +42,9 @@ func TestVessel(t *testing.T) {
 	tests := []struct {
 		name string
 		src  string
-		want []string // "id place 行"
+
+		// want は「id place 行」の形で期待する違反。
+		want []string
 	}{
 		{
 			name: "許可された器（header / doc / ラベル付き trailing）は通る",
@@ -129,7 +131,7 @@ func TestVessel(t *testing.T) {
 	}
 }
 
-// kind を絞った器は、その kind のコメントだけを受け入れる。
+// TestVesselKindNarrowing は、kind を絞った器がその kind のコメントだけを受け入れることを確かめる。
 func TestVesselKindNarrowing(t *testing.T) {
 	allows := []config.Allow{
 		{Place: "doc", Kind: []string{"line"}},
@@ -148,7 +150,8 @@ func TestVesselKindNarrowing(t *testing.T) {
 	}
 }
 
-// 同じ place を許す allow が複数あれば、どれか1つが受け入れれば通る。
+// TestVesselMultipleAllowsForSamePlace は、同じ place を許す allow が複数あれば、どれか1つが
+// 受け入れれば通ることを確かめる。
 func TestVesselMultipleAllowsForSamePlace(t *testing.T) {
 	allows := []config.Allow{
 		{Place: "trailing", Kind: []string{"line"}, Label: []string{"TODO:"}},
@@ -165,7 +168,8 @@ func TestVesselMultipleAllowsForSamePlace(t *testing.T) {
 	}
 }
 
-// 器を許した allow を返すこと（書式の検査がその form を使う）。
+// TestVesselReturnsMatchedAllow は、器を許した allow を返すことを確かめる（書式の検査がその form
+// を使う）。
 func TestVesselReturnsMatchedAllow(t *testing.T) {
 	spec := scan.GoSpec()
 	src := "package p\n\n// Open はストアを開く。\nfunc Open() {}\n"

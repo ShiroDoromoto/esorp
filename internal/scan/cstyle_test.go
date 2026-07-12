@@ -167,8 +167,8 @@ func TestCStyleGo(t *testing.T) {
 	}
 }
 
-// スコープと宣言の判定（internal/place）は、コメント以外のトークンを見て行う。
-// それらを落とさずに返していることを、ここで押さえる。
+// TestCStyleKeepsCodeTokens は、コメント以外のトークンを落とさずに返していることを押さえる。
+// スコープと宣言の判定（internal/place）が、それらを見て行われるため。
 func TestCStyleKeepsCodeTokens(t *testing.T) {
 	src := "func f() {\n\t// 中\n}\n"
 

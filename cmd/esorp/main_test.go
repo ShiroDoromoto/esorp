@@ -25,7 +25,8 @@ disposition:
     この位置のコメントは許可されていません。
 `
 
-// 器が1つずつ現れる: header / doc（適合）と leading / orphan / ラベル無しの trailing（違反）。
+// testSource は、器が1つずつ現れるソース。header / doc は適合し、leading / orphan / ラベル無しの
+// trailing は違反する。
 const testSource = `// ファイル冒頭。
 package p
 
@@ -152,8 +153,9 @@ func TestCheckJSONOutput(t *testing.T) {
 	}
 }
 
-// baseline に載せた違反は check から消え、CI が緑になる。
-// そして、載せたコメントの本文を撫でるとキーが変わり、違反として戻ってくる（意図した帰結）。
+// TestBaselineUpdateThenCheck は、baseline に載せた違反が check から消えて CI が緑になり、載せた
+// コメントの本文を撫でるとキーが変わって違反として戻ってくることを確かめる（触ったなら、あなたが
+// そのコメントの持ち主になる）。--allow-new を付けなければ、新しい違反は1件も載らない（ラチェット）。
 func TestBaselineUpdateThenCheck(t *testing.T) {
 	cfgPath := tree(t, testConfig+"baseline: .esorp-baseline.json\n", testSource)
 	src := filepath.Join(filepath.Dir(cfgPath), "a.go")
@@ -162,7 +164,6 @@ func TestBaselineUpdateThenCheck(t *testing.T) {
 		t.Fatalf("baseline に載せる前は違反あり: %d", got)
 	}
 
-	// --allow-new を付けなければ、新しい違反は1件も載らない（ラチェット）。
 	if got := run([]string{"baseline", "update", "--config", cfgPath}, io.Discard, io.Discard); got != exitOK {
 		t.Fatalf("baseline update = %d", got)
 	}
@@ -182,7 +183,6 @@ func TestBaselineUpdateThenCheck(t *testing.T) {
 		t.Errorf("抑えた件数を告げていない: %q", stdout.String())
 	}
 
-	// 本文を撫でるとキーが変わる。触ったなら、あなたがそのコメントの持ち主になる。
 	touched := strings.Replace(testSource, "// 文の直前（leading）。", "// 文の直前（leading）。少し足す。", 1)
 	if err := os.WriteFile(src, []byte(touched), 0o600); err != nil {
 		t.Fatal(err)
@@ -192,7 +192,8 @@ func TestBaselineUpdateThenCheck(t *testing.T) {
 	}
 }
 
-// 字句を持たない言語のファイルは、検査していないことを告げる（黙って適合にしない）。
+// TestCheckWarnsOnUnscannableFiles は、字句を持たない言語のファイルについて、検査していないことを
+// 告げるのを確かめる（黙って適合にしない）。
 func TestCheckWarnsOnUnscannableFiles(t *testing.T) {
 	cfgPath := tree(t, "syntax:\n  cstyle:\n    files: [\"**/*.tsx\"]\n    mode: structural\n", "")
 	if err := os.WriteFile(filepath.Join(filepath.Dir(cfgPath), "a.tsx"), []byte("// x\n"), 0o600); err != nil {

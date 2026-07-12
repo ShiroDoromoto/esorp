@@ -21,19 +21,20 @@ const (
 	FormURLs       = "form-urls"
 )
 
-// 見出しは「# … 」の形（Markdown）。#123 は追跡番号であって見出しではないので、
-// 記号のあとに空白を要求して切り分ける。
+// headingRe は Markdown の見出し（行頭の井桁のあとに空白）に当たる。井桁に数字が続く形は
+// 追跡番号であって見出しではないので、空白を要求して切り分ける。
 var headingRe = regexp.MustCompile(`(?m)^#{1,6}[ \t]`)
 
-// 追跡番号への参照。#123 と ABC-123 の2形だけを見る。形の判定であって、語彙判定ではない。
+// refRe は追跡番号への参照に当たる。井桁に数字が続く形と、大文字の接頭辞にハイフンと数字が
+// 続く形の2つだけを見る。形の判定であって、語彙判定ではない。
 var refRe = regexp.MustCompile(`#\d+|\b[A-Z][A-Z0-9]*-\d+\b`)
 
 var urlRe = regexp.MustCompile(`https?://`)
 
-// Form は、器を通ったコメントの中の書式を検査する。
-//
-// 形だけを見る。語彙は見ない。allow に form: が無ければ、書式は問わない（何も検査しない）。
-// 器の違反が出たコメントはここに来ない（順序は 器 → 書式 → 語彙）。
+// Form は、器を通ったコメントの中の書式を検査する（器の違反が出たコメントはここに来ない。順序は
+// 器 → 書式 → 語彙）。形だけを見る。語彙は見ない。allow に form: が無ければ、書式は問わない
+// （何も検査しない）。subject は紐づく宣言が無ければ判定できないので、宣言名を取り出せなかった
+// コメント（括弧でまとめた宣言そのもの、宣言に紐づかない doc 記法）は検査しない。
 func Form(c place.Comment, f *config.Form, disp map[string]string, spec scan.LangSpec) []Violation {
 	if f == nil {
 		return nil
@@ -46,8 +47,6 @@ func Form(c place.Comment, f *config.Form, disp map[string]string, spec scan.Lan
 		out = append(out, *violation(id, c, disp))
 	}
 
-	// subject は紐づく宣言が無ければ判定できない。宣言名を取り出せなかったコメント
-	// （var ( … ) のような塊、宣言に紐づかない doc 記法）は、検査しない。
 	if f.Subject == "required" && c.Decl != "" && !startsWithDecl(body, c.Decl) {
 		add(FormSubject)
 	}
@@ -79,10 +78,8 @@ func hasHeading(lines []string) bool {
 	return false
 }
 
-// startsWithDecl は、本文の1行目が宣言の名前で始まるかを見る。
-//
-// 名前の直後が識別子の続きであってはならない。Open で始まることと OpenFile で始まることは違う
-// （後者は目の前の宣言の説明ではない）。
+// startsWithDecl は、本文の1行目が宣言の名前で始まるかを見る。名前の直後が識別子の続きであっては
+// ならない。Open で始まることと OpenFile で始まることは違う（後者は目の前の宣言の説明ではない）。
 func startsWithDecl(body, decl string) bool {
 	first, _, _ := strings.Cut(body, "\n")
 	rest, ok := strings.CutPrefix(first, decl)

@@ -191,7 +191,7 @@ func TestFormParagraphsCountsProseOnly(t *testing.T) {
 	}
 }
 
-// form: を書かなければ書式は問わない。省略したものは検査しない。
+// TestFormOmitted は、form: を書かなければ書式を問わないことを確かめる。省略したものは検査しない。
 func TestFormOmitted(t *testing.T) {
 	src := "package p\n\n// # 見出しも #42 も段落も、\n//\n// form が無ければ問われない。\nfunc Open() {}\n"
 	if got := form(t, src, nil); len(got) != 0 {
@@ -202,7 +202,7 @@ func TestFormOmitted(t *testing.T) {
 	}
 }
 
-// max_lines / urls は既定 off。書いたときだけ効く。
+// TestFormMaxLinesAndURLs は、max_lines / urls が書いたときだけ効くことを確かめる（既定は off）。
 func TestFormMaxLinesAndURLs(t *testing.T) {
 	src := "package p\n\n" +
 		"// Open はストアを開く。\n" +

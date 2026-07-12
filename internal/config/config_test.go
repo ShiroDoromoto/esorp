@@ -11,7 +11,7 @@ import (
 	"github.com/ShiroDoromoto/esorp/internal/scan"
 )
 
-// docs/wip/04-config.md のテンプレート。esorp init が生成するもの（#14）と同じ形が読めること。
+// template は、esorp init が生成する設定テンプレートと同じ形。これが読めることを確かめる。
 const template = `
 syntax:
   cstyle:
@@ -72,7 +72,6 @@ func TestLoadTemplate(t *testing.T) {
 	if cfg.Baseline != ".esorp-baseline.json" {
 		t.Errorf("baseline = %q", cfg.Baseline)
 	}
-	// 層2 の既定は空。ツールは語彙の既定を持たない。
 	if len(cfg.Rules) != 0 {
 		t.Errorf("rules = %v, want 空", cfg.Rules)
 	}
@@ -113,7 +112,9 @@ func TestLoadErrors(t *testing.T) {
 	tests := []struct {
 		name string
 		body string
-		want string // エラーに現れるべき断片
+
+		// want はエラーに現れるべき断片。
+		want string
 	}{
 		{
 			name: "未知のキーは黙って無視せず拒否する",
@@ -207,7 +208,8 @@ func TestLoadMissingFile(t *testing.T) {
 	}
 }
 
-// 検証は1つ目で打ち切らず、すべて挙げる。設定を1回で直せるように。
+// TestLoadReportsAllProblems は、検証が1つ目で打ち切らずすべて挙げることを確かめる（設定を1回で
+// 直せるように）。
 func TestLoadReportsAllProblems(t *testing.T) {
 	_, err := load(t, "syntax:\n  cstyle:\n    mode: strict\n    allow:\n      - place: docs\n")
 	var cerr *Error

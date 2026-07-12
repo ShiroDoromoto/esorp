@@ -18,9 +18,14 @@ import (
 // 終了コードは CI と pre-commit hook がそのまま解釈する契約であり、
 // どのサブコマンドもこの3値以外を返さない。
 const (
-	exitOK       = 0 // 適合
-	exitViolated = 1 // 違反あり
-	exitConfig   = 2 // 設定エラー（設定が読めない・スキーマ違反・使い方の誤り・ファイルが読めない）
+	// exitOK は適合。
+	exitOK = 0
+
+	// exitViolated は違反あり。
+	exitViolated = 1
+
+	// exitConfig は設定エラー（設定が読めない・スキーマ違反・使い方の誤り・ファイルが読めない）。
+	exitConfig = 2
 )
 
 // defaultRef は --diff の比較先の既定。CI でも pre-commit でも、既定の関心は「main から見た自分の変更」。
@@ -137,7 +142,8 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
-// runBaseline は baseline のサブコマンドを捌く。今あるのは update だけ。
+// runBaseline は baseline のサブコマンドを捌く。今あるのは update だけで、書き出しはラチェットを
+// 通す（減る方向にしか動かない。もう違反していないキーは落ち、新しい違反は載らない）。
 func runBaseline(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] != "update" {
 		fmt.Fprintf(stderr, "esorp baseline: update を指定してください\n")
@@ -165,7 +171,6 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 		return exitConfig
 	}
 
-	// ラチェット: 減る方向にしか動かない。もう違反していないキーは落ち、新しい違反は載らない。
 	before := a.base.Len()
 	entries := a.base.Ratchet(a.result.Entries(), *allowNew)
 	if err := baseline.Save(a.baselinePath, entries); err != nil {
@@ -185,7 +190,8 @@ type audited struct {
 	baselinePath string
 }
 
-// scan は、設定を読み、ツリーを走査し、baseline を読む。sel は監査するコメントの絞り込み
+// scan は、設定を読み、ツリーを走査し、baseline を読む。設定ファイルの置かれた場所が、監査する
+// ツリーの根（設定の glob は、ここからの相対パスに当たる）。sel は監査するコメントの絞り込み
 // （--diff）で、nil なら絞らない。baseline はまだ効かせない（baseline update は、抑止する前の
 // 全違反を要る）。
 func scan(configPath string, sel audit.Selection, stderr io.Writer) (*audited, int) {
@@ -195,7 +201,6 @@ func scan(configPath string, sel audit.Selection, stderr io.Writer) (*audited, i
 		return nil, exitConfig
 	}
 
-	// 設定ファイルの置かれた場所が、監査するツリーの根。設定の glob は、ここからの相対パスに当たる。
 	root := filepath.Dir(configPath)
 	res, err := audit.Run(cfg, root, sel)
 	if err != nil {

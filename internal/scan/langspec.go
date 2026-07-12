@@ -7,10 +7,14 @@ import (
 
 // StringSpec は文字列リテラルの1形。Open / Close が同じ引用符でも構わない。
 type StringSpec struct {
-	Open      string
-	Close     string
-	Escape    bool // バックスラッシュで次の1文字を無効化するか
-	Multiline bool // 改行を含められるか
+	Open  string
+	Close string
+
+	// Escape は、バックスラッシュが次の1文字を無効にするか。
+	Escape bool
+
+	// Multiline は、改行を含められるか。
+	Multiline bool
 
 	// Hashes は、開きの引用符の直前に「#」が任意個入り、閉じにも同じ数の「#」が続く形
 	// （Rust の r#"…"#）。区切りの長さが可変なので、Open / Close だけでは表せない。
@@ -64,17 +68,30 @@ type LangSpec struct {
 	LineComment string
 	BlockOpen   string
 	BlockClose  string
-	BlockNests  bool         // Rust / Swift はブロックコメントがネストする
-	DocLine     []string     // doc 専用の行コメント記法。Go は持たない
-	DocBlock    []string     // doc 専用のブロックコメント記法。Go は持たない
-	Strings     []StringSpec // 長い接頭辞から先に照合する
+
+	// BlockNests は、ブロックコメントがネストするか（Rust / Swift はネストする）。
+	BlockNests bool
+
+	// DocLine は doc 専用の行コメント記法。Go は持たない。
+	DocLine []string
+
+	// DocBlock は doc 専用のブロックコメント記法。Go は持たない。
+	DocBlock []string
+
+	// Strings は文字列リテラルの形。長い接頭辞から先に照合する。
+	Strings []StringSpec
 
 	// DocInner は、doc 記法のうち、次の宣言ではなく、それを囲むものを説明するもの（Rust の //! /*!）。
 	DocInner []string
 
-	DeclKeywords    []string // 宣言を開始するキーワード
-	TypeLikeOpeners []string // 型を定義するブロックを開くキーワード（この中の宣言は doc を名乗れる）
-	FuncOpeners     []string // 関数本体を開くキーワード（この中では doc を名乗れない）
+	// DeclKeywords は宣言を開始するキーワード。
+	DeclKeywords []string
+
+	// TypeLikeOpeners は、型を定義するブロックを開くキーワード。この中の宣言は doc を名乗れる。
+	TypeLikeOpeners []string
+
+	// FuncOpeners は、関数本体を開くキーワード。この中では doc を名乗れない。
+	FuncOpeners []string
 
 	// GroupOpeners は、宣言を括弧でまとめるブロックを開くキーワード（Go の const ( … )）。
 	// 中に並ぶのはキーワードを伴わない宣言なので、型を定義するブロックと同じく doc を名乗れる。
@@ -85,10 +102,8 @@ type LangSpec struct {
 	DeclPrefixes []string
 }
 
-// GoSpec は Go の字句。
-//
-// Go には doc 専用記法が無く、doc コメントとは「宣言の直前に置かれた //」のことでしかない。
-// つまり Go では位置を見ないと器を判定できず、DocLine / DocBlock は nil になる。
+// GoSpec は Go の字句。Go には doc 専用記法が無く、doc コメントとは「宣言の直前に置かれた //」の
+// ことでしかない。つまり Go では位置を見ないと器を判定できず、DocLine / DocBlock は nil になる。
 func GoSpec() LangSpec {
 	return LangSpec{
 		Name:        "go",
@@ -99,7 +114,7 @@ func GoSpec() LangSpec {
 		Strings: []StringSpec{
 			{Open: `"`, Close: `"`, Escape: true},
 			{Open: "'", Close: "'", Escape: true},
-			{Open: "`", Close: "`", Multiline: true}, // 生文字列: エスケープ無し・改行可
+			{Open: "`", Close: "`", Multiline: true},
 		},
 		DeclKeywords:    []string{"func", "type", "var", "const", "package", "import"},
 		TypeLikeOpeners: []string{"type", "struct", "interface"},

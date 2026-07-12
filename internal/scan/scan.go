@@ -3,21 +3,32 @@
 // ファミリ（cstyle など）ごとにスキャナを持つ。
 package scan
 
-// Kind はトークンの種別。
-//
-// コメント以外のトークン（Word / Punct / String）も落とさずに返す。位置クラスの判定は
-// 「コメントの前後の非空白トークンが何か」「今どのスコープの中か」を見るため、
-// コメントだけを抜き出したトークン列では足りない（→ internal/place）。
+// Kind はトークンの種別。コメント以外のトークン（Word / Punct / String）も落とさずに返すのは、
+// 位置クラスの判定が「コメントの前後の非空白トークンが何か」「今どのスコープの中か」を見るため
+// （コメントだけを抜き出したトークン列では足りない → internal/place）。
 type Kind int
 
 const (
-	KindLine     Kind = iota // 行コメント（// …）
-	KindBlock                // ブロックコメント（/* … */）
-	KindDocLine              // doc 専用の行コメント（Rust の /// //!）
-	KindDocBlock             // doc 専用のブロックコメント（TS の /** … */）
-	KindWord                 // 識別子・キーワード・数値
-	KindPunct                // 記号1文字（{ } ( ) など）
-	KindString               // 文字列・ルーン・生文字列のリテラル
+	// KindLine は行コメント（// …）。
+	KindLine Kind = iota
+
+	// KindBlock はブロックコメント（/* … */）。
+	KindBlock
+
+	// KindDocLine は doc 専用の行コメント（Rust の /// //!）。
+	KindDocLine
+
+	// KindDocBlock は doc 専用のブロックコメント（TS の /** … */）。
+	KindDocBlock
+
+	// KindWord は識別子・キーワード・数値。
+	KindWord
+
+	// KindPunct は記号1文字（{ } ( ) など）。
+	KindPunct
+
+	// KindString は文字列・ルーン・生文字列のリテラル。
+	KindString
 )
 
 func (k Kind) String() string {
@@ -54,7 +65,9 @@ type Token struct {
 	Line    int
 	Col     int
 	EndLine int
-	Text    string // ソースに現れたままの生テキスト（コメント記号や引用符を含む）
+
+	// Text は、ソースに現れたままの生テキスト（コメント記号や引用符を含む）。
+	Text string
 }
 
 // ParseKind は、設定に書かれたコメント種別の名前を値にする。コメントの4種だけを引ける。

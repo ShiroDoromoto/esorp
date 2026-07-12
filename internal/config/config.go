@@ -20,11 +20,11 @@ import (
 	"github.com/ShiroDoromoto/esorp/internal/scan"
 )
 
-// v0 のスキャナが持つ構文ファミリ。他のファミリ（hash / sgml / cssblock）は、
+// knownFamilies は、スキャナを持っている構文ファミリ。他のファミリ（hash / sgml / cssblock）は、
 // そのスキャナを実装するまで設定に書けない（書けてしまうと、黙って何も検査しない）。
 var knownFamilies = []string{"cstyle"}
 
-// 層1 が出す違反 id。disposition のキーはこれでなければならない。
+// knownViolations は、層1 が出す違反 id。disposition のキーはこれでなければならない。
 var knownViolations = []string{
 	"place-not-allowed", "label-required",
 	"form-subject", "form-headings", "form-paragraphs", "form-refs", "form-max-lines", "form-urls",
@@ -41,28 +41,52 @@ type Config struct {
 // Syntax は構文ファミリごとのエントリ。キーが cstyle のようなファミリ名そのものであれば
 // Family は省略でき、本体は違う設定で使い分けるとき（cstyle-src / cstyle-test）に指す。
 type Syntax struct {
-	Family string   `yaml:"family"`
-	Files  []string `yaml:"files"` // 拡張子ではなく glob（Makefile のように拡張子を持たないものがある）
-	Mode   string   `yaml:"mode"`  // structural | content-only
-	Allow  []Allow  `yaml:"allow"` // mode: structural のときだけ書ける
+	Family string `yaml:"family"`
+
+	// Files は、このファミリのスキャナで読むファイルの glob。拡張子ではなく glob なのは、
+	// 拡張子を持たないファイル（Makefile）があるため。
+	Files []string `yaml:"files"`
+
+	// Mode は検査の深さ（structural | content-only）。
+	Mode string `yaml:"mode"`
+
+	// Allow は許可する器の列挙。mode: structural のときだけ書ける。
+	Allow []Allow `yaml:"allow"`
 }
 
 // Allow は許可する器1つ。ここに列挙されなかった器のコメントは、中身が何であれ違反。
 type Allow struct {
-	Place string   `yaml:"place"`
-	Kind  []string `yaml:"kind"`  // 省略時は全 kind
-	Label []string `yaml:"label"` // 指定するとラベル必須になる
-	Form  *Form    `yaml:"form"`  // 省略時は書式を問わない
+	Place string `yaml:"place"`
+
+	// Kind は、この器で許すコメントの種別。省略時は全 kind。
+	Kind []string `yaml:"kind"`
+
+	// Label は、この器のコメントの頭に立つ札。指定するとラベル必須になる。
+	Label []string `yaml:"label"`
+
+	// Form は器の中の書式。省略時は書式を問わない。
+	Form *Form `yaml:"form"`
 }
 
 // Form は器の中の書式。形だけを見る。語彙は見ない。省略したものは検査しない。
 type Form struct {
-	Subject    string `yaml:"subject"`    // required | off
-	Headings   string `yaml:"headings"`   // deny | allow
-	Paragraphs *int   `yaml:"paragraphs"` // 段落数の上限
-	Refs       string `yaml:"refs"`       // deny | allow
-	MaxLines   *int   `yaml:"max_lines"`  // 行数の上限
-	URLs       string `yaml:"urls"`       // deny | allow
+	// Subject は、1行目が紐づく宣言の名前で始まることを求めるか（required | off）。
+	Subject string `yaml:"subject"`
+
+	// Headings は、見出しを書けるか（deny | allow）。
+	Headings string `yaml:"headings"`
+
+	// Paragraphs は段落数の上限。
+	Paragraphs *int `yaml:"paragraphs"`
+
+	// Refs は、追跡番号への参照を書けるか（deny | allow）。
+	Refs string `yaml:"refs"`
+
+	// MaxLines は行数の上限。
+	MaxLines *int `yaml:"max_lines"`
+
+	// URLs は、URL を書けるか（deny | allow）。
+	URLs string `yaml:"urls"`
 }
 
 // Rule は層2（語彙）のルール。v0 では読み込んで検証するだけで、効かせるのは後続。
@@ -72,14 +96,17 @@ type Rule struct {
 	Message string `yaml:"message"`
 	Where   Where  `yaml:"where"`
 
-	Regexp *regexp.Regexp `yaml:"-"` // Load が組み立てる。不正な正規表現は設定エラー
+	// Regexp は、Load が Pattern から組み立てたもの。不正な正規表現は設定エラー。
+	Regexp *regexp.Regexp `yaml:"-"`
 }
 
 // Where は層2 のルールの適用範囲。省略した軸は絞らない。
 type Where struct {
 	Syntax []string `yaml:"syntax"`
 	Kind   []string `yaml:"kind"`
-	Path   []string `yaml:"path"` // ! 始まりで除外
+
+	// Path は、絞り込むパスの glob。! 始まりで除外。
+	Path []string `yaml:"path"`
 }
 
 // Error は設定エラー。設定が読めない・スキーマに合わない・正規表現が不正、のいずれか。
@@ -107,7 +134,6 @@ func Load(path string) (*Config, error) {
 	}
 
 	var cfg Config
-	// 未知のキーを拒否する。綴り違いが黙って無視されると、設定ファイルが唯一の真実でなくなる。
 	if err := yaml.UnmarshalWithOptions(data, &cfg, yaml.Strict()); err != nil {
 		return nil, &Error{Path: path, Problems: []string{strings.TrimSpace(err.Error())}}
 	}
@@ -177,7 +203,7 @@ func validateSyntax(name string, s Syntax, add func(string, ...any)) {
 
 	family := s.Family
 	if family == "" {
-		family = name // キーがファミリ名そのもの
+		family = name
 	}
 	if !slices.Contains(knownFamilies, family) {
 		add("%s.family: %q を読むスキャナがありません（今あるのは %s）", at, family, strings.Join(knownFamilies, " / "))
@@ -229,8 +255,7 @@ func validateAllow(at string, a Allow, add func(string, ...any)) {
 		if !slices.Contains([]string{"required", "off"}, f.Subject) {
 			add("%s.form.subject: %q は不明です（required | off）", at, f.Subject)
 		} else if ok && p != place.Doc {
-			// subject は紐づく宣言が無ければ判定できない。
-			add("%s.form.subject: place: doc のときだけ指定できます", at)
+			add("%s.form.subject: place: doc のときだけ指定できます（紐づく宣言が無ければ、名前で始まるかを判定できません）", at)
 		}
 	}
 	for _, sw := range []struct {

@@ -12,18 +12,25 @@ import (
 	"github.com/ShiroDoromoto/esorp/internal/scan"
 )
 
-// Place は位置クラス。
-//
-// 履歴・事情・作業メモが流れ込むのは Leading と Orphan であり、この2つを許可しなければ、
-// 語彙を一切見ずに、それらは構造的に書けなくなる。
+// Place は位置クラス。履歴・事情・作業メモが流れ込むのは Leading と Orphan であり、この2つを
+// 許可しなければ、語彙を一切見ずに、それらは構造的に書けなくなる。
 type Place int
 
 const (
-	Header   Place = iota // ファイル冒頭。前にコードトークンが1つも無い
-	Doc                   // 直後が宣言で、間に空行が無く、宣言コンテキストにある
-	Trailing              // 同じ行にコードがある（行末にぶら下がっている）
-	Leading               // 直後がコードだが、宣言ではない（＝文の直前）
-	Orphan                // 直後がコードでない（空行が挟まる / 閉じ括弧 / ファイル末尾）
+	// Header はファイル冒頭。前にコードトークンが1つも無い。
+	Header Place = iota
+
+	// Doc は宣言に紐づく説明。直後が宣言で、間に空行が無く、宣言スコープにある。
+	Doc
+
+	// Trailing は行末にぶら下がるもの。同じ行にコードがある。
+	Trailing
+
+	// Leading は文の直前。直後はコードだが、宣言ではない。
+	Leading
+
+	// Orphan はどこにも紐づかないもの。直後がコードでない（空行が挟まる / 閉じ括弧 / ファイル末尾）。
+	Orphan
 )
 
 func (p Place) String() string {
@@ -51,8 +58,12 @@ type Comment struct {
 	Line    int
 	Col     int
 	EndLine int
-	Text    string // 塊の生テキスト。複数トークンなら改行で連ねる
-	Decl    string // 紐づく宣言の名前。Doc 以外、または取り出せないときは空
+
+	// Text は塊の生テキスト。複数トークンなら改行で連ねる。
+	Text string
+
+	// Decl は紐づく宣言の名前。Doc 以外、または取り出せないときは空。
+	Decl string
 }
 
 // opener は、そのスコープを開いたものの種類。doc を名乗れるのは、宣言が並ぶ器の中だけ
@@ -97,14 +108,16 @@ func groupEnd(toks []scan.Token, i int) int {
 	end := i
 	for j := i + 1; j < len(toks) && toks[j].Kind.IsComment(); j++ {
 		if toks[j].Line != toks[end].EndLine+1 {
-			break // 空行が挟まれば、そこから先は別の器
+			break
 		}
 		end = j
 	}
 	return end
 }
 
-// classify は、判定表を上から順に当てる（最初に当たったものを採る）。
+// classify は、判定表を上から順に当てる（最初に当たったものを採る）。doc 専用記法だけは位置より
+// 先に効き（Rust の //! はファイル冒頭にあっても header ではなく doc）、その分、器が doc でも
+// 紐づく宣言が無いことがある。
 func classify(toks []scan.Token, start, end int, scope opener, spec scan.LangSpec) Comment {
 	c := Comment{
 		Kind:    toks[start].Kind,
@@ -119,8 +132,6 @@ func classify(toks []scan.Token, start, end int, scope opener, spec scan.LangSpe
 
 	switch {
 	case c.Kind == scan.KindDocLine || c.Kind == scan.KindDocBlock:
-		// doc 専用記法は字句だけで doc と分かる。位置判定より kind を優先する
-		// （Rust の //! はファイル冒頭にあっても header ではなく doc）。
 		c.Place = Doc
 	case prev == nil:
 		c.Place = Header
@@ -136,8 +147,6 @@ func classify(toks []scan.Token, start, end int, scope opener, spec scan.LangSpe
 		c.Place = Leading
 	}
 
-	// 名前を取り出せるのは、直後が本当に宣言のときだけ。doc 記法は関数の中でも doc になるが、
-	// そこに紐づく宣言は無い。
 	if c.Place == Doc && !isInnerDoc(c.Text, spec) && next != nil && startsDecl(*next, scope, spec) {
 		c.Decl = declName(toks, nextIdx, spec)
 	}
@@ -155,7 +164,8 @@ func isInnerDoc(text string, spec scan.LangSpec) bool {
 	return false
 }
 
-// updateScope は、i のトークンが括弧なら、スコープスタックを開閉する。
+// updateScope は、i のトークンが括弧なら、スコープスタックを開閉する。一番下の openerFile は
+// 積んだままにする。
 func updateScope(scope *[]opener, toks []scan.Token, i int, spec scan.LangSpec) {
 	t := toks[i]
 	if t.Kind != scan.KindPunct {
@@ -167,7 +177,7 @@ func updateScope(scope *[]opener, toks []scan.Token, i int, spec scan.LangSpec) 
 	case "(":
 		*scope = append(*scope, parenOpenerOf(toks, i, spec))
 	case "}", ")":
-		if len(*scope) > 1 { // openerFile は積んだままにする
+		if len(*scope) > 1 {
 			*scope = (*scope)[:len(*scope)-1]
 		}
 	}
@@ -218,16 +228,17 @@ func startsDecl(next scan.Token, scope opener, spec scan.LangSpec) bool {
 	}
 }
 
-// declName は、コメントの直後の宣言から名前を取り出す（書式の subject がこれを使う）。宣言の
-// 前後には、飛ばすべきものが3つある。属性（Rust の #[…]）、可視性の括弧（pub(crate) fn）、
-// そして Go のレシーバ（func (s *Scanner) Scan）。可視性の括弧は空白を挟まずに続くものだけを
-// 見るので、Go の const ( … ) のような括弧でまとめた宣言には当たらない。
+// declName は、コメントの直後の宣言から名前を取り出す（書式の subject がこれを使う）。名前に
+// たどり着くには、属性（Rust の #[…]）、連なる宣言キーワード（Rust の pub fn、TS の
+// export function。本体は最後のもの）、可視性の括弧（pub(crate) fn）、Go のレシーバ
+// （func (s *Scanner) Scan）を飛ばす。キーワードを伴わない宣言（型の中のフィールド、const の
+// 定数）は、その語自体が名前。可視性の括弧は空白を挟まずに続くものだけを見るので、Go の
+// const ( … ) のような括弧でまとめた宣言には当たらず、その宣言そのものには紐づく名前が無い（空を返す）。
 func declName(toks []scan.Token, i int, spec scan.LangSpec) string {
 	i = skipAttrs(toks, i, spec)
 	if i < 0 || i >= len(toks) || toks[i].Kind != scan.KindWord {
 		return ""
 	}
-	// 型の中のフィールドのように、キーワードを伴わない宣言は、その語自体が名前。
 	if !isDecl(toks[i], spec) {
 		return toks[i].Text
 	}
@@ -235,7 +246,6 @@ func declName(toks []scan.Token, i int, spec scan.LangSpec) string {
 	kw := toks[i].Text
 	i++
 	for i < len(toks) {
-		// 宣言キーワードが続くことがある（Rust の pub fn、TS の export function）。最後のものが本体。
 		if isDecl(toks[i], spec) {
 			kw = toks[i].Text
 			i++
@@ -247,14 +257,12 @@ func declName(toks []scan.Token, i int, spec scan.LangSpec) string {
 		}
 		break
 	}
-	// Go のメソッドは名前の前にレシーバを挟む: func (s *Scanner) Scan(…)
 	if slices.Contains(spec.FuncOpeners, kw) && i < len(toks) && isPunct(toks[i], "(") {
 		i = skipGroup(toks, i, "(", ")")
 	}
 	if i < len(toks) && toks[i].Kind == scan.KindWord {
 		return toks[i].Text
 	}
-	// var ( … ) のような括弧でまとめた宣言には、紐づく名前が無い。
 	return ""
 }
 

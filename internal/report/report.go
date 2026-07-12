@@ -117,10 +117,8 @@ func JSON(w io.Writer, res *audit.Result) error {
 	return enc.Encode(out)
 }
 
-// Warnings は、検査できなかったファイルを告げる。
-//
-// 設定の files: に当たったのに字句を持っていないファイルは、検査されていない。黙って落とすと
-// 「違反はありません」が嘘になるので、必ず見える所に出す。
+// Warnings は、検査できなかったファイルを告げる。設定の files: に当たったのに字句を持っていない
+// ファイルは、検査されていない。黙って落とすと「違反はありません」が嘘になるので、必ず見える所に出す。
 func Warnings(w io.Writer, res *audit.Result) error {
 	if len(res.Skipped) == 0 {
 		return nil

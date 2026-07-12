@@ -32,14 +32,11 @@ type Baseline struct {
 	keys map[string]bool
 }
 
-// Key は、違反1件を指すキーを組む。
-//
-// 行番号を使わない。行番号で記録すると、無関係な編集で行がずれるたびに baseline が壊れる。
-// body は正規化した本文（scan.Body）で、occurrence は同じキーが同じファイルに複数回現れるときの
-// 出現順（0 始まり）。
-//
-// 帰結として、baseline に載っているコメントの本文を編集するとキーが変わり、違反として現れる。
-// これは意図している。触ったなら、あなたがそのコメントの持ち主になる。
+// Key は、違反1件を指すキーを組む。行番号を使わないのは、行番号で記録すると無関係な編集で行が
+// ずれるたびに baseline が壊れるため。body は正規化した本文（scan.Body）で、occurrence は同じキーが
+// 同じファイルに複数回現れるときの出現順（0 始まり）。帰結として、baseline に載っているコメントの
+// 本文を編集するとキーが変わり、違反として現れる。これは意図している。触ったなら、あなたがその
+// コメントの持ち主になる。
 func Key(path, id, body string, occurrence int) string {
 	sum := sha256.Sum256([]byte(strings.Join([]string{path, id, body, strconv.Itoa(occurrence)}, "\x00")))
 	return hex.EncodeToString(sum[:])
@@ -86,10 +83,9 @@ func (b *Baseline) Len() int {
 	return len(b.keys)
 }
 
-// Ratchet は、次に書き出す baseline を決める。**減る方向にしか動かない。**
-//
-// もう違反していないキーは落ち（current に無い）、新しい違反は載らない（b に無い）。
-// 新しい違反を載せるには allowNew を明示する。CI では絶対に使わない。
+// Ratchet は、次に書き出す baseline を決める。減る方向にしか動かない — もう違反していないキーは
+// 落ち（current に無い）、新しい違反は載らない（b に無い）。新しい違反を載せるには allowNew を
+// 明示する。CI では絶対に使わない。
 func (b *Baseline) Ratchet(current []Entry, allowNew bool) []Entry {
 	out := []Entry{}
 	for _, e := range current {

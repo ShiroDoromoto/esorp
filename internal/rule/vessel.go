@@ -22,26 +22,27 @@ const (
 // Violation は違反1件。Message は disposition から引いた文字列をそのまま持つ。
 // ツールは行き先を規定せず、設定された文字列を提示するだけ。
 type Violation struct {
-	ID      string
-	Line    int
-	Col     int
-	Place   place.Place
-	Kind    scan.Kind
-	Text    string // コメントの生テキスト
+	ID    string
+	Line  int
+	Col   int
+	Place place.Place
+	Kind  scan.Kind
+
+	// Text はコメントの生テキスト。
+	Text string
+
 	Message string
 }
 
-// Vessel は、コメントの器を allow の列挙に照らす。
-//
-// 列挙されなかった器のコメントは、中身が何であれ違反。違反が無ければ、その器を許した allow を
-// 返す（書式の検査は、その allow の form を使う）。
+// Vessel は、コメントの器を allow の列挙に照らす。列挙されなかった器のコメントは、中身が何であれ
+// 違反。違反が無ければ、その器を許した allow を返す（書式の検査は、その allow の form を使う）。
+// kind を省いた allow は全 kind を受け、器を許す allow が複数あれば、どれか1つが受け入れれば通る。
 func Vessel(c place.Comment, allows []config.Allow, disp map[string]string, spec scan.LangSpec) (*config.Allow, *Violation) {
 	var matched []config.Allow
 	for _, a := range allows {
 		if a.PlaceValue() != c.Place {
 			continue
 		}
-		// kind の省略は「全 kind」の意味。
 		if kinds := a.KindValues(); len(kinds) > 0 && !slices.Contains(kinds, c.Kind) {
 			continue
 		}
@@ -52,7 +53,6 @@ func Vessel(c place.Comment, allows []config.Allow, disp map[string]string, spec
 		return nil, violation(PlaceNotAllowed, c, disp)
 	}
 
-	// 器を許す allow が複数あれば、どれか1つが受け入れれば通る。
 	body := scan.Body(c.Text, spec)
 	for _, a := range matched {
 		if len(a.Label) == 0 || hasLabel(body, a.Label) {

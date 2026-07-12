@@ -26,9 +26,13 @@ import (
 // Finding は違反1件に、それがどのファイルのどの syntax エントリで見つかったかを添えたもの。
 // Key は baseline の照合に使う（行番号を含まない → 無関係な編集でずれない）。
 type Finding struct {
-	Path   string // ツリーの根からの相対パス
-	Syntax string // 当たった syntax エントリの名前
-	Key    string
+	// Path はツリーの根からの相対パス。
+	Path string
+
+	// Syntax は、当たった syntax エントリの名前。
+	Syntax string
+
+	Key string
 	rule.Violation
 }
 
@@ -84,6 +88,8 @@ func (s Selection) covers(path string, from, to int) bool {
 // コメントだけを監査する（Files / Comments も、絞った後の数を数える）。返すエラーは
 // ファイルが読めない類のものだけで、違反は Result に載る（違反はエラーではない）。baseline は
 // ここでは効かせない（呼び手が Suppress を呼ぶ）。baseline update は、抑止する前の全違反を要る。
+// 違反はパス → 行 → 桁 → id の順に並べる（1つのコメントが複数の書式に反することがあり、id まで
+// 見ないと並びが揺れる）。
 func Run(cfg *config.Config, root string, sel Selection) (*Result, error) {
 	res := &Result{Findings: []Finding{}}
 
@@ -107,7 +113,6 @@ func Run(cfg *config.Config, root string, sel Selection) (*Result, error) {
 		if c := a.Col - b.Col; c != 0 {
 			return c
 		}
-		// 1つのコメントが複数の書式に反することがある。id まで見ないと並びが揺れる。
 		return strings.Compare(a.ID, b.ID)
 	})
 	return res, nil
@@ -115,14 +120,16 @@ func Run(cfg *config.Config, root string, sel Selection) (*Result, error) {
 
 // matched は、1つのファイルと、それを拾った syntax エントリの名前。
 type matched struct {
-	path   string // root からの相対パス。区切りは常に「/」（glob と同じ土俵に乗せる）
+	// path は root からの相対パス。区切りは常に「/」（glob と同じ土俵に乗せる）。
+	path string
+
 	syntax string
 }
 
 // collect は、root の下を歩き、設定の files: に当たったファイルをパス順に集める。sel が非 nil
 // なら、1行も当たらないファイルは読まない。1つのファイルが複数の syntax エントリに当たったときは、
 // 名前順で最初のものを採る。設定の書き手が重なりを作らない限り起きないが、起きたときに走査の
-// 結果が揺れないようにする。
+// 結果が揺れないようにする。.git の中はソースではないので、設定で除外させるまでもなく落とす。
 func collect(cfg *config.Config, root string, sel Selection) ([]matched, error) {
 	names := slices.Sorted(maps.Keys(cfg.Syntax))
 
@@ -132,7 +139,6 @@ func collect(cfg *config.Config, root string, sel Selection) ([]matched, error) 
 			return err
 		}
 		if d.IsDir() {
-			// .git の中はソースではない。設定で除外させる筋合いのものではないので、ここで落とす。
 			if d.Name() == ".git" {
 				return fs.SkipDir
 			}
@@ -162,7 +168,7 @@ func collect(cfg *config.Config, root string, sel Selection) ([]matched, error) 
 	return out, nil
 }
 
-// matchAny は、glob のいずれかがパスに当たるかを見る（D-9: ** を含む照合は doublestar）。
+// matchAny は、glob のいずれかがパスに当たるかを見る。** を含む照合は doublestar に任せる。
 func matchAny(globs []string, path string) bool {
 	for _, g := range globs {
 		if ok, err := doublestar.Match(g, path); err == nil && ok {
@@ -172,9 +178,11 @@ func matchAny(globs []string, path string) bool {
 	return false
 }
 
-// auditFile は、ファイル1つを読み、器の違反を Result に足す。sel で落ちるコメントも照合までは
-// 回し、出現順だけ進めて報告しない。ここを飛ばすと、同じ違反のキーが check と check --diff で
-// 食い違い、baseline が効かなくなる。
+// auditFile は、ファイル1つを読み、器 → 書式 の順に検査して違反を Result に足す（mode:
+// content-only は器を問わないので、層2 が入るまで見るものが無い）。同じ本文の同じ違反が1つの
+// ファイルに何度も現れる（型の全フィールドに付いた同じ行末コメントなど）ため、baseline のキーは
+// 出現順で区別する。sel で落ちるコメントも照合までは回し、出現順だけ進めて報告しない。ここを
+// 飛ばすと、同じ違反のキーが check と check --diff で食い違い、baseline が効かなくなる。
 func auditFile(cfg *config.Config, root string, m matched, sel Selection, res *Result) error {
 	spec, ok := scan.SpecFor(m.path)
 	if !ok {
@@ -196,13 +204,10 @@ func auditFile(cfg *config.Config, root string, m matched, sel Selection, res *R
 		}
 	}
 
-	// mode: content-only は器を問わない。層2（rules）が入るまで、見るものが無い。
 	if syn.Mode != "structural" {
 		return nil
 	}
 
-	// 同じ本文の同じ違反が1つのファイルに何度も現れることがある（型の全フィールドに付いた
-	// 同じ行末コメントなど）。baseline のキーは行番号を持たないので、出現順で区別する。
 	occurrence := map[string]int{}
 	add := func(c place.Comment, v rule.Violation) {
 		body := scan.Body(c.Text, spec)
@@ -221,7 +226,6 @@ func auditFile(cfg *config.Config, root string, m matched, sel Selection, res *R
 			add(c, *v)
 			continue
 		}
-		// 器を通ったコメントだけが書式の検査に進む（順序は 器 → 書式 → 語彙）。
 		for _, fv := range rule.Form(c, a.Form, cfg.Disposition, spec) {
 			add(c, fv)
 		}
