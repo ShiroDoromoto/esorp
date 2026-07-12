@@ -38,22 +38,29 @@ func Body(text string, spec LangSpec) string {
 // BodyLines は、コメント記号を剥がし、記号の内側の字下げを残した本文の行を返す。字下げを落とす
 // Body では、doc のコードブロックと散文を見分けられない（→ CodeLines）。行コメントは記号（//）が
 // 字下げの外側にあるので、内側と外側は記号で分かれるが、記号を持たないブロックコメントの継ぎ行では
-// 分かれ目が無いので、開きの列（col。1 始まり）を境にする。開きより手前にある分だけを外側の字下げ
-// として剥がし、それを超える字下げは内側として残す。全部剥がすと、タブで字下げしたコードブロックが
-// 散文に化け、層1 では段落として数えられ、層2 では前後の行と畳まれる。
-func BodyLines(text string, col int, spec LangSpec) []string {
+// 分かれ目が無い。そこで、継ぎ行に共通する字下げ（commonIndent）を外側とし、そこを超える分だけを
+// 内側として残す。字下げは相対でしか意味を持たない（go/doc も同じ形で剥がす）。全部剥がすと、タブで
+// 字下げしたコードブロックが散文に化け、層1 では段落として数えられ、層2 では前後の行と畳まれる。
+func BodyLines(text string, spec LangSpec) []string {
 	openers := commentOpeners(spec)
 
-	var lines []string
-	for i, line := range strings.Split(text, "\n") {
-		s := line
+	raw := strings.Split(text, "\n")
+	for i, s := range raw {
 		if spec.BlockClose != "" {
 			if t := strings.TrimRight(s, " \t"); strings.HasSuffix(t, spec.BlockClose) {
-				s = strings.TrimSuffix(t, spec.BlockClose)
+				raw[i] = strings.TrimSuffix(t, spec.BlockClose)
 			}
 		}
+	}
+	outer := ""
+	if len(raw) > 1 {
+		outer = commonIndent(raw[1:])
+	}
+
+	var lines []string
+	for i, s := range raw {
 		if i > 0 {
-			s = trimOuterIndent(s, col-1)
+			s = strings.TrimPrefix(s, outer)
 		}
 		if o := longestPrefix(s, openers); o != "" {
 			s = strings.TrimPrefix(s, o)
@@ -206,15 +213,28 @@ func longestPrefix(s string, prefixes []string) string {
 	return best
 }
 
-// trimOuterIndent は、行頭の字下げのうち、コメントの開きより手前にある n バイト分までを剥がす。
-// 剥がすのは空白とタブだけで、そこで尽きたら止まる（開きが行の途中にあるコメントの継ぎ行は、
-// 字下げが n より浅いのが普通で、そのときは字下げが丸ごと外側になる）。
-func trimOuterIndent(s string, n int) string {
-	i := 0
-	for i < n && i < len(s) && (s[i] == ' ' || s[i] == '\t') {
-		i++
+// commonIndent は、行に共通する行頭の空白・タブのうち、いちばん長いものを返す。空白しか無い行は
+// 字下げを持たないので数えない（コメントを閉じる「*/」だけの行と、段落を隔てる空行がこれになる）。
+func commonIndent(lines []string) string {
+	common := ""
+	first := true
+	for _, s := range lines {
+		body := strings.TrimLeft(s, " \t")
+		if body == "" {
+			continue
+		}
+		indent := s[:len(s)-len(body)]
+		if first {
+			common, first = indent, false
+			continue
+		}
+		n := 0
+		for n < len(common) && n < len(indent) && common[n] == indent[n] {
+			n++
+		}
+		common = common[:n]
 	}
-	return s[i:]
+	return common
 }
 
 // trimContinuationStar は、ブロックコメントの継ぎ行に添えた「*」を、その手前の空白ごと落とす。
