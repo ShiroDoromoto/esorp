@@ -15,9 +15,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # wharfy は git のタグから版を決める。タグが無いと、確かめる先が
-          # 決まらず全チャネルを飛ばす。
+          # wharfy は git のタグから版を決める。浅いクローンではタグが来ない。
           fetch-depth: 0
+
+      # 確かめる先は「配った版」であって、main の先端ではない。先端はタグより
+      # 進んでいるのが普通で、そこには配ったものが無い（wharfy は全チャネルを飛ばす）。
+      - name: 直近のタグに合わせる
+        run: |
+          tag=$(git describe --tags --abbrev=0)
+          echo "確かめる版: $tag"
+          git checkout --detach "$tag"
 
       - name: wharfy を入れる
         run: |
