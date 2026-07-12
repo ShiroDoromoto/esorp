@@ -60,7 +60,11 @@ func Run(cfg *config.Config, root string) (*Result, error) {
 		if c := a.Line - b.Line; c != 0 {
 			return c
 		}
-		return a.Col - b.Col
+		if c := a.Col - b.Col; c != 0 {
+			return c
+		}
+		// 1つのコメントが複数の書式に反することがある。id まで見ないと並びが揺れる。
+		return strings.Compare(a.ID, b.ID)
 	})
 	return res, nil
 }
@@ -144,8 +148,14 @@ func auditFile(cfg *config.Config, root string, m matched, res *Result) error {
 		return nil
 	}
 	for _, c := range comments {
-		if _, v := rule.Vessel(c, syn.Allow, cfg.Disposition, spec); v != nil {
+		a, v := rule.Vessel(c, syn.Allow, cfg.Disposition, spec)
+		if v != nil {
 			res.Findings = append(res.Findings, Finding{Path: m.path, Syntax: m.syntax, Violation: *v})
+			continue
+		}
+		// 器を通ったコメントだけが書式の検査に進む（順序は 器 → 書式 → 語彙）。
+		for _, fv := range rule.Form(c, a.Form, cfg.Disposition, spec) {
+			res.Findings = append(res.Findings, Finding{Path: m.path, Syntax: m.syntax, Violation: fv})
 		}
 	}
 	return nil
