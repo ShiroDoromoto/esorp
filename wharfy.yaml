@@ -12,7 +12,6 @@ channels:
   - scoop
   - apt
   - rpm
-  - aur
 
 apt: {provider: fury, user: shirodoromoto}
 rpm: {provider: fury, user: shirodoromoto}
