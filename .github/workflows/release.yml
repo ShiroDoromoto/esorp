@@ -23,6 +23,13 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # wharfy build は内部で goreleaser を呼ぶ。PATH に無いと builder_unavailable で落ちる。
+      # メジャーを固定する。v3 が出たときに黙って壊れないように。
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          install-only: true
+          version: "~> v2"
+
       - name: wharfy を入れる
         run: |
           curl -fsSL https://github.com/ShiroDoromoto/wharfy/releases/latest/download/install.sh | sh
