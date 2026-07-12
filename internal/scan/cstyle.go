@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -41,6 +42,7 @@ func (s *cstyleScanner) scanOnce() {
 		s.pos++
 	case s.tryComment():
 	case s.tryString():
+	case s.tryRegex():
 	case s.tryJSX():
 	default:
 		s.wordOrPunct()
@@ -231,6 +233,98 @@ func (s *cstyleScanner) stringLit(sp StringSpec, n int, close string) {
 		}
 	}
 	s.emit(KindString, line, col, s.line, string(s.src[start:s.pos]))
+}
+
+// tryRegex は、現在位置が正規表現リテラルの開きなら、それを1つ読む。引用符を含む正規表現
+// （/don't/）を文字列の開きと読むと、行の後ろにある本物のコメントを文字列の中に飲み込む。
+// 「/」は除算演算子でもあるので、開きかどうかは直前のトークンで見分ける（コメントの // と /* は、
+// ここに来る前に読まれている）。
+func (s *cstyleScanner) tryRegex() bool {
+	if !s.spec.Regex || s.src[s.pos] != '/' || !s.exprCanStart() {
+		return false
+	}
+	m := s.snapshot()
+	if s.regexLit() {
+		return true
+	}
+	s.restore(m)
+	return false
+}
+
+// regexLit は正規表現リテラルを1つ読む。閉じの「/」は、エスケープされておらず、文字クラス […] の
+// 中でもないもの。改行までに閉じなければ、それは正規表現ではないので偽を返す（呼び手が読み直す）。
+func (s *cstyleScanner) regexLit() bool {
+	start, line, col := s.pos, s.line, s.col()
+	s.pos++
+	inClass := false
+
+	for s.pos < len(s.src) {
+		switch c := s.src[s.pos]; {
+		case c == '\n':
+			return false
+		case c == '\\' && s.pos+1 < len(s.src) && s.src[s.pos+1] != '\n':
+			s.pos += 2
+		case c == '[':
+			inClass = true
+			s.pos++
+		case c == ']':
+			inClass = false
+			s.pos++
+		case c == '/' && !inClass:
+			s.pos++
+			for s.pos < len(s.src) && s.src[s.pos] >= 'a' && s.src[s.pos] <= 'z' {
+				s.pos++
+			}
+			s.emit(KindString, line, col, line, string(s.src[start:s.pos]))
+			return true
+		default:
+			s.pos++
+		}
+	}
+	return false
+}
+
+// exprCanStart は、現在位置から式が始まりうるかを、直前のトークンで見る。式が終わった直後
+// （識別子・数値・文字列・閉じ括弧）に来る「/」は除算であり、「<」は比較かジェネリクスであって、
+// リテラルの開きではない。開き括弧・演算子・式を導くキーワード（return …）の後なら、開きでありうる。
+func (s *cstyleScanner) exprCanStart() bool {
+	prev := s.lastCode()
+	if prev == nil {
+		return true
+	}
+	switch prev.Kind {
+	case KindWord:
+		return slices.Contains(s.spec.ExprKeywords, prev.Text)
+	case KindString:
+		return false
+	case KindPunct:
+		return prev.Text != ")" && prev.Text != "]" && prev.Text != "}"
+	}
+	return true
+}
+
+// lastCode は、直前の非コメントトークンを返す（無ければ nil）。
+func (s *cstyleScanner) lastCode() *Token {
+	for i := len(s.toks) - 1; i >= 0; i-- {
+		if !s.toks[i].Kind.IsComment() {
+			return &s.toks[i]
+		}
+	}
+	return nil
+}
+
+// mark はスキャナの状態の控え。読み直し（正規表現・JSX の当たりが外れたとき）に使う。
+type mark struct {
+	pos, line, lineStart, toks int
+}
+
+func (s *cstyleScanner) snapshot() mark {
+	return mark{pos: s.pos, line: s.line, lineStart: s.lineStart, toks: len(s.toks)}
+}
+
+func (s *cstyleScanner) restore(m mark) {
+	s.pos, s.line, s.lineStart = m.pos, m.line, m.lineStart
+	s.toks = s.toks[:m.toks]
 }
 
 func (s *cstyleScanner) wordOrPunct() {

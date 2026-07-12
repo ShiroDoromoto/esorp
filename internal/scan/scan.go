@@ -27,7 +27,8 @@ const (
 	// KindPunct は記号1文字（{ } ( ) など）。
 	KindPunct
 
-	// KindString は文字列・ルーン・生文字列のリテラル。
+	// KindString は、中身をコードとして読まないもの（文字列・ルーン・生文字列のリテラル、
+	// 正規表現リテラル、JSX のテキスト）。
 	KindString
 )
 

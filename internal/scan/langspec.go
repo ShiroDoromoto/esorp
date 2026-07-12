@@ -105,8 +105,12 @@ type LangSpec struct {
 	// ではなく、' は文字列を開かない。
 	JSX bool
 
-	// ExprKeywords は、その直後から式が始まりうるキーワード（return / await …）。JSX の「<」が
-	// 要素を開くのか比較・ジェネリクスなのかは、直前のトークンでしか当たりを付けられない。
+	// Regex は、正規表現リテラル（/…/g）を持つか。引用符を含む正規表現を文字列の開きと読むと、
+	// 行の後ろにあるコメントを飲み込む。
+	Regex bool
+
+	// ExprKeywords は、その直後から式が始まりうるキーワード（return / await …）。「/」が除算か
+	// 正規表現か、「<」が比較・ジェネリクスか JSX かは、直前のトークンでしか当たりを付けられない。
 	ExprKeywords []string
 }
 
@@ -167,6 +171,7 @@ func TSSpec() LangSpec {
 		BlockOpen:   "/*",
 		BlockClose:  "*/",
 		BlockNests:  false,
+		Regex:       true,
 		DocBlock:    []string{"/**"},
 		Strings: []StringSpec{
 			{Open: `"`, Close: `"`, Escape: true},
@@ -180,20 +185,19 @@ func TSSpec() LangSpec {
 		TypeLikeOpeners: []string{"class", "interface", "enum", "namespace"},
 		FuncOpeners:     []string{"function"},
 		DeclPrefixes:    []string{"@"},
+		ExprKeywords: []string{
+			"return", "yield", "await", "throw", "case", "default",
+			"do", "else", "in", "of", "new", "typeof", "void", "delete",
+		},
 	}
 }
 
 // TSXSpec は TSX（.tsx）の字句。TS との差は JSX ひとつで、字句としては「タグの中身はテキストで
-// あって、コードでも文字列でもない」ことに尽きる。ExprKeywords は、その「<」が要素を開くのか
-// 比較・ジェネリクスなのかを見分けるために要る（TSX の難所）。
+// あって、コードでも文字列でもない」ことに尽きる。
 func TSXSpec() LangSpec {
 	spec := TSSpec()
 	spec.Name = "tsx"
 	spec.JSX = true
-	spec.ExprKeywords = []string{
-		"return", "yield", "await", "throw", "case", "default",
-		"do", "else", "in", "of", "new", "typeof", "void", "delete",
-	}
 	return spec
 }
 

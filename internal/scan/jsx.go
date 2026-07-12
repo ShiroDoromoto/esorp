@@ -1,9 +1,6 @@
 package scan
 
-import (
-	"slices"
-	"strings"
-)
+import "strings"
 
 // tryJSX は、現在位置が要素の開きなら、その要素を丸ごと1つ読む。「<」が要素を開くのか比較・
 // ジェネリクスなのかは字句だけでは決まらない（TSX の難所）ので、直前のトークンと次の1字で当たりを
@@ -21,28 +18,14 @@ func (s *cstyleScanner) tryJSX() bool {
 	return false
 }
 
-// jsxCanOpen は、この「<」が要素を開きうるかを見る。式が終わった直後（識別子・文字列・閉じ括弧）
-// の「<」は比較かジェネリクスであって、要素の開きではない。式がここから始まりうる位置
-// （return などのキーワード・開き括弧・演算子）なら、要素でありうる。次の1字が名前の始まりでも
-// 「>」（フラグメント）でもなければ、いずれにせよ要素ではない。
+// jsxCanOpen は、この「<」が要素を開きうるかを見る。式がここから始まりうる位置に立ち、次の1字が
+// 名前の始まりか「>」（フラグメント）であることが要る。そうでなければ、それは比較かジェネリクス。
 func (s *cstyleScanner) jsxCanOpen() bool {
 	n := s.pos + 1
 	if n >= len(s.src) || (s.src[n] != '>' && !isNameStart(s.src[n])) {
 		return false
 	}
-	prev := s.lastCode()
-	if prev == nil {
-		return true
-	}
-	switch prev.Kind {
-	case KindWord:
-		return slices.Contains(s.spec.ExprKeywords, prev.Text)
-	case KindString:
-		return false
-	case KindPunct:
-		return prev.Text != ")" && prev.Text != "]" && prev.Text != "}"
-	}
-	return true
+	return s.exprCanStart()
 }
 
 // jsxElement は「<」から要素を1つ読む。閉じないまま尽きたら偽を返す（呼び手が読み直す）。
@@ -176,30 +159,6 @@ func (s *cstyleScanner) emitText(start, line, col int) {
 	s.emit(KindString, line, col, s.line, text)
 }
 
-// lastCode は、直前の非コメントトークンを返す（無ければ nil）。
-func (s *cstyleScanner) lastCode() *Token {
-	for i := len(s.toks) - 1; i >= 0; i-- {
-		if !s.toks[i].Kind.IsComment() {
-			return &s.toks[i]
-		}
-	}
-	return nil
-}
-
 func isNameStart(c byte) bool {
 	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-}
-
-// mark はスキャナの状態の控え。読み直しに使う。
-type mark struct {
-	pos, line, lineStart, toks int
-}
-
-func (s *cstyleScanner) snapshot() mark {
-	return mark{pos: s.pos, line: s.line, lineStart: s.lineStart, toks: len(s.toks)}
-}
-
-func (s *cstyleScanner) restore(m mark) {
-	s.pos, s.line, s.lineStart = m.pos, m.line, m.lineStart
-	s.toks = s.toks[:m.toks]
 }
