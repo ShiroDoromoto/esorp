@@ -38,6 +38,58 @@ func TestBodyDocNotation(t *testing.T) {
 	}
 }
 
+// TestBodyLinesKeepsInnerIndent は、コメント記号の内側の字下げが残ることを見る。剥がすのは開きの列
+// より手前（外側）だけで、記号を持たないブロックコメントの継ぎ行でも、内側のタブは残る。
+func TestBodyLinesKeepsInnerIndent(t *testing.T) {
+	ts := LangSpec{Name: "ts", LineComment: "//", BlockOpen: "/*", BlockClose: "*/", DocBlock: []string{"/**"}, DocFences: true}
+
+	tests := []struct {
+		name string
+		text string
+		col  int
+		spec LangSpec
+		want []string
+	}{
+		{
+			name: "Go のブロック doc のコードブロック",
+			text: "/*\nText は書く。\n\n\ta.go:42:2  place-not-allowed\n*/",
+			col:  1,
+			spec: GoSpec(),
+			want: []string{"Text は書く。", "", "\ta.go:42:2  place-not-allowed"},
+		},
+		{
+			name: "字下げした場所のブロックコメントは、開きの分だけ外側を剥がす",
+			text: "/*\n\t説明。\n\n\t\tcode()\n\t*/",
+			col:  2,
+			spec: GoSpec(),
+			want: []string{"説明。", "", "\tcode()"},
+		},
+		{
+			name: "JSDoc の継ぎ行の * は空白ごと落とす",
+			text: "/**\n * Text は書く。\n *\n * ```\n * code()\n * ```\n */",
+			col:  1,
+			spec: ts,
+			want: []string{"Text は書く。", "", "```", "code()", "```"},
+		},
+		{
+			name: "コードブロックの中の * 始まりの行を継ぎ記号と読み違えない",
+			text: "/*\nF は書き込む。\n\n\t*p = 1\n*/",
+			col:  1,
+			spec: GoSpec(),
+			want: []string{"F は書き込む。", "", "\t*p = 1"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := BodyLines(tt.text, tt.col, tt.spec)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("BodyLines(%q, %d) = %q, want %q", tt.text, tt.col, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestUnwrap(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -66,7 +118,7 @@ func TestUnwrap(t *testing.T) {
 // TestUnwrapKeepsParagraphsApart は、畳んだ段落どうしが地続きにならないことを見る。地続きにすると、
 // 段落をまたいだ句に当たってしまう。
 func TestUnwrapKeepsParagraphsApart(t *testing.T) {
-	if got := Unwrap(BodyLines("// no\n//\n// longer", GoSpec()), GoSpec()); got != "no\nlonger" {
+	if got := Unwrap(BodyLines("// no\n//\n// longer", 1, GoSpec()), GoSpec()); got != "no\nlonger" {
 		t.Errorf("Unwrap = %q, want %q", got, "no\nlonger")
 	}
 }
@@ -76,7 +128,7 @@ func TestUnwrapKeepsParagraphsApart(t *testing.T) {
 func TestUnwrapKeepsCodeBlockLines(t *testing.T) {
 	text := "// F は変換する。\n//\n//\tif x == nil {\n//\t\treturn\n//\t}\n//\n// 呼ぶ側は\n// 気にしない。"
 	want := "F は変換する。\n\tif x == nil {\n\t\treturn\n\t}\n呼ぶ側は気にしない。"
-	if got := Unwrap(BodyLines(text, GoSpec()), GoSpec()); got != want {
+	if got := Unwrap(BodyLines(text, 1, GoSpec()), GoSpec()); got != want {
 		t.Errorf("Unwrap = %q, want %q", got, want)
 	}
 }

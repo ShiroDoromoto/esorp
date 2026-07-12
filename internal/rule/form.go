@@ -39,7 +39,7 @@ func Form(c place.Comment, f *config.Form, disp map[string]string, spec scan.Lan
 	if f == nil {
 		return nil
 	}
-	lines := scan.BodyLines(c.Text, spec)
+	lines := scan.BodyLines(c.Text, c.Col, spec)
 	code := scan.CodeLines(lines, spec)
 	body := strings.Join(lines, "\n")
 

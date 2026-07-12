@@ -35,23 +35,31 @@ func Body(text string, spec LangSpec) string {
 	return strings.Join(lines, "\n")
 }
 
-// BodyLines は、コメント記号だけを剥がし、行頭の字下げを残した本文の行を返す。
-// 字下げを落とす Body では、doc のコードブロックと散文を見分けられない（→ CodeLines）。
-func BodyLines(text string, spec LangSpec) []string {
+// BodyLines は、コメント記号を剥がし、記号の内側の字下げを残した本文の行を返す。字下げを落とす
+// Body では、doc のコードブロックと散文を見分けられない（→ CodeLines）。行コメントは記号（//）が
+// 字下げの外側にあるので、内側と外側は記号で分かれるが、記号を持たないブロックコメントの継ぎ行では
+// 分かれ目が無いので、開きの列（col。1 始まり）を境にする。開きより手前にある分だけを外側の字下げ
+// として剥がし、それを超える字下げは内側として残す。全部剥がすと、タブで字下げしたコードブロックが
+// 散文に化け、層1 では段落として数えられ、層2 では前後の行と畳まれる。
+func BodyLines(text string, col int, spec LangSpec) []string {
 	openers := commentOpeners(spec)
 
 	var lines []string
-	for _, line := range strings.Split(text, "\n") {
+	for i, line := range strings.Split(text, "\n") {
 		s := line
 		if spec.BlockClose != "" {
 			if t := strings.TrimRight(s, " \t"); strings.HasSuffix(t, spec.BlockClose) {
 				s = strings.TrimSuffix(t, spec.BlockClose)
 			}
 		}
-		s = strings.TrimLeft(s, " \t")
-		s = trimLongestPrefix(s, openers)
-		if rest, ok := strings.CutPrefix(s, "*"); ok {
-			s = rest
+		if i > 0 {
+			s = trimOuterIndent(s, col-1)
+		}
+		if o := longestPrefix(s, openers); o != "" {
+			s = strings.TrimPrefix(s, o)
+			s = strings.TrimPrefix(s, "*")
+		} else {
+			s = trimContinuationStar(s)
 		}
 		s = strings.TrimPrefix(s, " ")
 		lines = append(lines, strings.TrimRight(s, " \t"))
@@ -184,11 +192,38 @@ func commentOpeners(spec LangSpec) []string {
 }
 
 func trimLongestPrefix(s string, prefixes []string) string {
+	return strings.TrimPrefix(s, longestPrefix(s, prefixes))
+}
+
+// longestPrefix は、s の先頭に当たるいちばん長い記号を返す。当たらなければ空。
+func longestPrefix(s string, prefixes []string) string {
 	best := ""
 	for _, p := range prefixes {
 		if p != "" && strings.HasPrefix(s, p) && len(p) > len(best) {
 			best = p
 		}
 	}
-	return strings.TrimPrefix(s, best)
+	return best
+}
+
+// trimOuterIndent は、行頭の字下げのうち、コメントの開きより手前にある n バイト分までを剥がす。
+// 剥がすのは空白とタブだけで、そこで尽きたら止まる（開きが行の途中にあるコメントの継ぎ行は、
+// 字下げが n より浅いのが普通で、そのときは字下げが丸ごと外側になる）。
+func trimOuterIndent(s string, n int) string {
+	i := 0
+	for i < n && i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+		i++
+	}
+	return s[i:]
+}
+
+// trimContinuationStar は、ブロックコメントの継ぎ行に添えた「*」を、その手前の空白ごと落とす。
+// 飛ばすのが空白だけなのは、コードブロックの字下げがタブだから。タブの先にある「*p = 1」のような
+// 行を、継ぎ記号と読み違えない。
+func trimContinuationStar(s string) string {
+	t := strings.TrimLeft(s, " ")
+	if rest, ok := strings.CutPrefix(t, "*"); ok {
+		return rest
+	}
+	return s
 }
