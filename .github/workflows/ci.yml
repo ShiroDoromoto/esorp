@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then
+            echo "gofmt が要るファイル:"
+            echo "$out"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...
+
+      # esorp を esorp 自身に当てる。baseline を効かせた状態で緑を保つ（新しい違反は増やさない）。
+      - name: esorp check（ドッグフーディング）
+        run: go run ./cmd/esorp check
+
+      # 純 Go・cgo なし・単一バイナリを担保する（CI に置くバイナリが要件）。
+      - name: クロスコンパイル
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            echo "==> $target"
+            GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./cmd/esorp
+          done
