@@ -36,7 +36,19 @@ jobs:
 
       - name: GitHub Release に上げる
         env:
-          # releases チャネルはこのリポジトリにしか書かないので、Actions が渡す token で足りる。
-          # 他リポジトリ（tap / bucket）へ書く publish は PAT が要る — #38 で足す。
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.WHARFY_GITHUB_TOKEN }}
         run: wharfy release --yes
+
+      - name: 各チャネルへ配る
+        env:
+          # tap / bucket は別リポジトリなので、Actions が渡す token では届かない。
+          # wharfy がまだ無い tap を作るところまでやるため、repo スコープの PAT が要る。
+          GITHUB_TOKEN: ${{ secrets.WHARFY_GITHUB_TOKEN }}
+          PACKAGE_REPO_TOKEN: ${{ secrets.PACKAGE_REPO_TOKEN }}
+        run: wharfy publish --yes
+
+      # 配って終わりにしない。消費者の側から入れて、動くところまでを1周とする。
+      - name: 消費者側から入れて確かめる
+        env:
+          GITHUB_TOKEN: ${{ secrets.WHARFY_GITHUB_TOKEN }}
+        run: wharfy verify --install
