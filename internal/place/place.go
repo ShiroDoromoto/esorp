@@ -55,15 +55,16 @@ type Comment struct {
 	Decl    string // 紐づく宣言の名前。Doc 以外、または取り出せないときは空
 }
 
-// opener は、そのスコープを開いたものの種類。
-//
-// doc を名乗れるのは openerFile（トップレベル）と openerTypeLike の中だけ。関数本体の中では
-// 宣言の直前でも doc にならない。ここを緩めると、関数の中のローカル宣言の直前が履歴の逃げ場になる。
+// opener は、そのスコープを開いたものの種類。doc を名乗れるのは、宣言が並ぶ器の中だけ
+// （openerFile はトップレベル、openerTypeLike は型の中、openerGroup は括弧でまとめた宣言ブロック）。
+// 関数本体の中では宣言の直前でも doc にならず、ここを緩めると、関数の中のローカル宣言の直前が
+// 履歴の逃げ場になる。
 type opener int
 
 const (
 	openerFile opener = iota
 	openerTypeLike
+	openerGroup
 	openerFunc
 	openerBlock
 )
@@ -163,7 +164,9 @@ func updateScope(scope *[]opener, toks []scan.Token, i int, spec scan.LangSpec) 
 	switch t.Text {
 	case "{":
 		*scope = append(*scope, openerOf(toks, i, spec))
-	case "}":
+	case "(":
+		*scope = append(*scope, parenOpenerOf(toks, i, spec))
+	case "}", ")":
 		if len(*scope) > 1 { // openerFile は積んだままにする
 			*scope = (*scope)[:len(*scope)-1]
 		}
@@ -188,16 +191,27 @@ func openerOf(toks []scan.Token, i int, spec scan.LangSpec) opener {
 	return found
 }
 
+// parenOpenerOf は、i の「(」が何を開いたのかを決める。宣言スコープになるのは、括弧で宣言を
+// まとめるキーワードが直前に立つときだけ（Go の const ( … )）。関数の引数リストも呼び出しも、
+// 直前にはその名前が来るので、ただのブロックとして積まれる。
+func parenOpenerOf(toks []scan.Token, i int, spec scan.LangSpec) opener {
+	if i > 0 && toks[i-1].Kind == scan.KindWord && slices.Contains(spec.GroupOpeners, toks[i-1].Text) {
+		return openerGroup
+	}
+	return openerBlock
+}
+
 // startsDecl は、next のトークンが宣言の始まりであることを、今いるスコープに照らして見る。
 // トップレベルでは、宣言はキーワードか、宣言の前に置かれる記号（Rust の属性 #[…]）で始まる。
-// 型を定義するブロックの中は、フィールドもメソッドもすべて宣言なので、キーワードが無くても
-// 宣言として扱う（struct のフィールドや interface のメソッドに付いた doc を落とさないため）。
+// 型を定義するブロックと、括弧でまとめた宣言ブロック（Go の const ( … )）の中は、フィールドも
+// メソッドも定数もすべて宣言なので、キーワードが無くても宣言として扱う（struct のフィールドや
+// const の定数に付いた doc を落とさないため）。
 // 関数本体とただのブロックの中に、doc を名乗れる宣言は無い。
 func startsDecl(next scan.Token, scope opener, spec scan.LangSpec) bool {
 	switch scope {
 	case openerFile:
 		return isDecl(next, spec) || isDeclPrefix(next, spec)
-	case openerTypeLike:
+	case openerTypeLike, openerGroup:
 		return next.Kind == scan.KindWord || isDeclPrefix(next, spec)
 	default:
 		return false

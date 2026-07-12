@@ -70,6 +70,72 @@ func TestClassifyGo(t *testing.T) {
 			want: []want{{line: 4, endLine: 4, place: Doc, decl: "Line", text: "// Line は 1 始まり。"}},
 		},
 		{
+			name: "括弧でまとめた const の中の定数の直前も doc（group スコープ）",
+			src: "package p\n" +
+				"\n" +
+				"const (\n" +
+				"\t// Header はファイル冒頭。\n" +
+				"\tHeader Place = iota\n" +
+				"\t// Doc は宣言に紐づく。\n" +
+				"\tDoc\n" +
+				")\n",
+			want: []want{
+				{line: 4, endLine: 4, place: Doc, decl: "Header", text: "// Header はファイル冒頭。"},
+				{line: 6, endLine: 6, place: Doc, decl: "Doc", text: "// Doc は宣言に紐づく。"},
+			},
+		},
+		{
+			name: "括弧でまとめた var / type の中も doc",
+			src: "package p\n" +
+				"\n" +
+				"var (\n" +
+				"\t// ErrEmpty は空のとき。\n" +
+				"\tErrEmpty = errors.New(\"empty\")\n" +
+				")\n" +
+				"\n" +
+				"type (\n" +
+				"\t// Line は行番号。\n" +
+				"\tLine int\n" +
+				")\n",
+			want: []want{
+				{line: 4, endLine: 4, place: Doc, decl: "ErrEmpty", text: "// ErrEmpty は空のとき。"},
+				{line: 9, endLine: 9, place: Doc, decl: "Line", text: "// Line は行番号。"},
+			},
+		},
+		{
+			name: "括弧ブロックを閉じる前の浮いたコメントは orphan のまま",
+			src: "package p\n" +
+				"\n" +
+				"const (\n" +
+				"\tA = 1\n" +
+				"\t// ここで打ち切った。\n" +
+				")\n",
+			want: []want{{line: 5, endLine: 5, place: Orphan, text: "// ここで打ち切った。"}},
+		},
+		{
+			name: "関数の引数リストはただのブロック。宣言の直前でも doc にならない",
+			src: "package p\n" +
+				"\n" +
+				"func f(\n" +
+				"\t// 走査するツリーの根。\n" +
+				"\troot string,\n" +
+				") {\n" +
+				"}\n",
+			want: []want{{line: 4, endLine: 4, place: Leading, text: "// 走査するツリーの根。"}},
+		},
+		{
+			name: "関数の中の呼び出しの括弧もただのブロック",
+			src: "package p\n" +
+				"\n" +
+				"func f() {\n" +
+				"\tg(\n" +
+				"\t\t// 既定は上書きしない。\n" +
+				"\t\tfalse,\n" +
+				"\t)\n" +
+				"}\n",
+			want: []want{{line: 5, endLine: 5, place: Leading, text: "// 既定は上書きしない。"}},
+		},
+		{
 			name: "関数本体の中は、宣言の直前でも doc にならず leading",
 			src: "package p\n" +
 				"\n" +

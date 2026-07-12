@@ -76,6 +76,11 @@ type LangSpec struct {
 	TypeLikeOpeners []string // 型を定義するブロックを開くキーワード（この中の宣言は doc を名乗れる）
 	FuncOpeners     []string // 関数本体を開くキーワード（この中では doc を名乗れない）
 
+	// GroupOpeners は、宣言を括弧でまとめるブロックを開くキーワード（Go の const ( … )）。
+	// 中に並ぶのはキーワードを伴わない宣言なので、型を定義するブロックと同じく doc を名乗れる。
+	// 持たない言語もある（Rust / TypeScript は宣言を括弧でまとめない）。
+	GroupOpeners []string
+
 	// DeclPrefixes は、宣言の前に置かれる記号（Rust の属性 #[…]）。宣言の一部として扱う。
 	DeclPrefixes []string
 }
@@ -99,6 +104,7 @@ func GoSpec() LangSpec {
 		DeclKeywords:    []string{"func", "type", "var", "const", "package", "import"},
 		TypeLikeOpeners: []string{"type", "struct", "interface"},
 		FuncOpeners:     []string{"func"},
+		GroupOpeners:    []string{"const", "var", "type"},
 	}
 }
 

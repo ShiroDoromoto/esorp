@@ -7,11 +7,6 @@
       "id": "label-required"
     },
     {
-      "key": "0c37b7b51f0c6303ed764d88ca7c674c02698eb677f40ebcd9a9858188520144",
-      "path": "internal/scan/langspec.go",
-      "id": "form-paragraphs"
-    },
-    {
       "key": "0c976d94b5f821bcd8a1d8dd9b229ca244e09ae849b347ad548dc7ced273cfcc",
       "path": "internal/config/config_test.go",
       "id": "form-subject"
@@ -70,11 +65,6 @@
       "key": "2aa8bf72175abffe79ba3053e36c3f9878920a20dcfdfe7bd5520dd147f7b5c3",
       "path": "internal/rule/vessel.go",
       "id": "place-not-allowed"
-    },
-    {
-      "key": "2b38f9068af3c89ad6126a5ba4e7ad1fee1abf9a66fe7cfaae175fec05dfabd8",
-      "path": "internal/report/report.go",
-      "id": "form-paragraphs"
     },
     {
       "key": "2c85bc7f0e9bc739a4b441d3109ad0e5243de345b4dc9aa5cc7418214c7399aa",
@@ -139,11 +129,6 @@
     {
       "key": "39e16562a795de22c4482659dbea38e4f74eb99a6726d18ddaf9ad37e5e7a1c7",
       "path": "internal/place/place.go",
-      "id": "place-not-allowed"
-    },
-    {
-      "key": "3a5d811a797033002d3fe85353d0baf3b8620b3945c451c07fd60ed357ea647a",
-      "path": "internal/scan/body.go",
       "id": "place-not-allowed"
     },
     {
@@ -262,11 +247,6 @@
       "id": "form-subject"
     },
     {
-      "key": "7f5c74499c6e36b3dc549829747afbf32cee63755f45f2988bf77dd908e32f08",
-      "path": "internal/place/place_test.go",
-      "id": "form-subject"
-    },
-    {
       "key": "7f813549eb307b026089989bc4da7f994e4822da105016d1c3533a525bfa1db9",
       "path": "internal/config/config.go",
       "id": "label-required"
@@ -322,34 +302,14 @@
       "id": "label-required"
     },
     {
-      "key": "8f7c6d72d818572528bf196e785b3655b4ff72121c01824e7b8c8ce00c4ef62b",
-      "path": "internal/place/place.go",
-      "id": "form-paragraphs"
-    },
-    {
       "key": "913d3e31d3d7c6fa2b2e26536cb24a69c5aac16038548f86aace1f00a7154de7",
       "path": "internal/config/config.go",
       "id": "form-subject"
     },
     {
-      "key": "916db2191648c3fbf8ce8e0edd6ad0a5934838a9e75a3c6a2481c06ba44e1674",
-      "path": "internal/audit/audit.go",
-      "id": "form-paragraphs"
-    },
-    {
       "key": "91944f048bb447b44f060adcd5f17f7f954b0a16e0b28d70223c6b6a3026e2b2",
       "path": "internal/audit/audit.go",
       "id": "label-required"
-    },
-    {
-      "key": "948fb7f23cdf197e7b7386685fdd138c6956aa9b62f90ec1e14a77b5e71b82a5",
-      "path": "internal/audit/audit.go",
-      "id": "form-paragraphs"
-    },
-    {
-      "key": "984948c21a0424b241b7ec43eec0fd952653e1b64e5defa32842c684fb3664f7",
-      "path": "internal/scan/langspec.go",
-      "id": "form-paragraphs"
     },
     {
       "key": "9a749d2762fb665aadf771422fe59f7f85d6dfd468bc87f39d0fc97ada8b31c9",
@@ -409,11 +369,6 @@
     {
       "key": "ae08a5e1135781076c0087805091b09dec18609243296ab0585dec4f9d4c0995",
       "path": "internal/scan/cstyle.go",
-      "id": "place-not-allowed"
-    },
-    {
-      "key": "ae2c60ae9683081b3d2c4dd7db4fc09ab9813d496af0e82c9b2d1f4dc2d88ddd",
-      "path": "internal/place/place_test.go",
       "id": "place-not-allowed"
     },
     {
@@ -485,11 +440,6 @@
       "key": "ce3d0d5db2883a7193c693423b67d92be7fe4c513f3193414426707e71161a9b",
       "path": "internal/config/config.go",
       "id": "label-required"
-    },
-    {
-      "key": "d29f4f520e0c1f80aae251c71a7ffa917b14bbe9889bbc5d1b27b95628861deb",
-      "path": "internal/place/place.go",
-      "id": "form-paragraphs"
     },
     {
       "key": "d2ebe7680798a44665e106038b4ccf0dcc75f5363b7624fd3e3e7edef51f8a0c",
@@ -570,11 +520,6 @@
       "key": "ea492abb93e5e0f7c9b3eed7e12815be91190cb95e148d50b8f69cc68725ba6f",
       "path": "internal/rule/vessel.go",
       "id": "form-paragraphs"
-    },
-    {
-      "key": "eaf542ba4ed9f9ca7d56686770d45117e4a45624a02df1e1431814bf4f60da04",
-      "path": "internal/scan/cstyle_test.go",
-      "id": "place-not-allowed"
     },
     {
       "key": "f0549455af8adb0384e3632438252e1bcfeae1c681ec0a4a6cad3e1f634845bb",
