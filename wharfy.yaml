@@ -1,0 +1,22 @@
+project: esorp
+main: ./cmd/esorp
+github: ShiroDoromoto/esorp
+homepage: https://github.com/ShiroDoromoto/esorp
+license: Apache-2.0
+
+channels:
+  - releases
+  - script
+  - goinstall
+  - homebrew
+  - scoop
+  - apt
+  - rpm
+  - aur
+
+apt: {provider: fury, user: shirodoromoto}
+rpm: {provider: fury, user: shirodoromoto}
+
+build:
+  goos: [linux, darwin, windows]
+  goarch: [amd64, arm64]
