@@ -66,25 +66,32 @@ func BodyLines(text string, spec LangSpec) []string {
 	return lines
 }
 
-// Unwrap は、折り返しで途切れた本文を、段落ごとに1行へ畳む。語彙のルール（層2）は正規表現を本文
-// （Body）に当てるので、畳まないと「no longer」が「no\nlonger」で途切れて当たらず、検査したのに
-// 通ったように見える。継ぎ目に空白を挟むかは両側の文字で決め、両側とも東アジアの全角なら挟まない
-// （日本語の折り返しは空白を伴わないので、「かつ\nて」は「かつて」に戻る）。空行は段落の区切りと
-// して残り、畳んだ段落を隔てる改行になる。呼ぶのは照合の直前だけで、baseline のキーが見る本文は
-// Body のままなので、既存のキーは動かない。
-func Unwrap(body string) string {
-	var paragraphs []string
+// Unwrap は、折り返しで途切れた本文を、段落ごとに1行へ畳む。語彙のルール（層2）は正規表現を本文に
+// 当てるので、畳まないと「no longer」が「no\nlonger」で途切れて当たらず、検査したのに通ったように
+// 見える。継ぎ目に空白を挟むかは両側の文字で決め、両側とも東アジアの全角なら挟まない（日本語の
+// 折り返しは空白を伴わないので、「かつ\nて」は「かつて」に戻る）。空行は段落の区切りとして残り、
+// 畳んだ段落を隔てる改行になる。受けるのは字下げを残した行（BodyLines）で、畳むのは散文だけ。doc の
+// コードブロックの行（IsCodeLine）はそのまま置き、前後の散文とも地続きにしない。コードは折り返された
+// 散文ではないので、つないでも意味のある文にはならず、ルールがコードの行をまたいで当たるだけになる。
+// 呼ぶのは照合の直前だけで、baseline のキーが見る本文は Body のままなので、既存のキーは動かない。
+func Unwrap(lines []string) string {
+	var out []string
 	var b strings.Builder
 	flush := func() {
 		if b.Len() > 0 {
-			paragraphs = append(paragraphs, b.String())
+			out = append(out, b.String())
 			b.Reset()
 		}
 	}
 
-	for _, line := range strings.Split(body, "\n") {
+	for _, line := range lines {
 		if line == "" {
 			flush()
+			continue
+		}
+		if IsCodeLine(line) {
+			flush()
+			out = append(out, line)
 			continue
 		}
 		if b.Len() > 0 && needsSpace(lastRune(b.String()), firstRune(line)) {
@@ -93,7 +100,7 @@ func Unwrap(body string) string {
 		b.WriteString(line)
 	}
 	flush()
-	return strings.Join(paragraphs, "\n")
+	return strings.Join(out, "\n")
 }
 
 // needsSpace は、折り返しの継ぎ目に空白を挟むかを返す。両側とも全角のときだけ挟まない。

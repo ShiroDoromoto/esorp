@@ -135,6 +135,16 @@ func TestLexiconWrapped(t *testing.T) {
 			"package p\n\n// F は no\n//\n// longer を含む段落を持つ。\nfunc F() {}\n",
 			0,
 		},
+		{
+			"doc のコードブロックの行をまたいだつながりには当たらない",
+			"package p\n\n// F は変換する。\n//\n//\tx := no\n//\tlonger(x)\n//\nfunc F() {}\n",
+			0,
+		},
+		{
+			"コードブロックと地続きの散文にも当たらない",
+			"package p\n\n// F は no\n//\n//\tlonger()\nfunc F() {}\n",
+			0,
+		},
 	}
 
 	for _, tt := range tests {

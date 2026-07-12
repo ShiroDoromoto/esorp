@@ -23,9 +23,10 @@ type Target struct {
 // ので、設定に rules: が無ければ何も起きない。違反のメッセージは各ルールが持つ（disposition は層1 の
 // ためのもの）。ルールを並べた順に返す。呼ぶのは層1 を通ったコメントに対してだけで、置き場所や形が
 // 違うコメントに語彙の違反まで重ねて出しても、ノイズにしかならない。当てる本文は折り返しを畳んだもの
-// （scan.Unwrap）で、ルールの書き手は句が折り返される心配をせずに「no longer」と書ける。
+// （scan.Unwrap）で、ルールの書き手は句が折り返される心配をせずに「no longer」と書ける。畳むのは
+// 散文だけなので、doc のコードブロックの中で当たることはあっても、その行をまたぐことはない。
 func Lexicon(c place.Comment, rules []config.Rule, t Target, spec scan.LangSpec) []Violation {
-	body := scan.Unwrap(scan.Body(c.Text, spec))
+	body := scan.Unwrap(scan.BodyLines(c.Text, spec))
 
 	var out []Violation
 	for _, r := range rules {
