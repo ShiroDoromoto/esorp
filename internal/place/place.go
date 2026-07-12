@@ -137,10 +137,21 @@ func classify(toks []scan.Token, start, end int, scope opener, spec scan.LangSpe
 
 	// 名前を取り出せるのは、直後が本当に宣言のときだけ。doc 記法は関数の中でも doc になるが、
 	// そこに紐づく宣言は無い。
-	if c.Place == Doc && next != nil && startsDecl(*next, scope, spec) {
+	if c.Place == Doc && !isInnerDoc(c.Text, spec) && next != nil && startsDecl(*next, scope, spec) {
 		c.Decl = declName(toks, nextIdx, spec)
 	}
 	return c
+}
+
+// isInnerDoc は、その器が内側 doc の記法（Rust の //!）で書かれているかを見る。内側 doc は
+// 次の宣言ではなく、それを囲むものを説明するので、直後に宣言があっても紐づけない。
+func isInnerDoc(text string, spec scan.LangSpec) bool {
+	for _, p := range spec.DocInner {
+		if strings.HasPrefix(text, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // updateScope は、i のトークンが括弧なら、スコープスタックを開閉する。
@@ -178,24 +189,27 @@ func openerOf(toks []scan.Token, i int, spec scan.LangSpec) opener {
 }
 
 // startsDecl は、next のトークンが宣言の始まりであることを、今いるスコープに照らして見る。
-//
-// トップレベルでは、宣言はキーワードで始まる。型を定義するブロックの中は、フィールドも
-// メソッドもすべて宣言なので、キーワードが無くても宣言として扱う（struct のフィールドや
-// interface のメソッドに付いた doc を落とさないため）。
+// トップレベルでは、宣言はキーワードか、宣言の前に置かれる記号（Rust の属性 #[…]）で始まる。
+// 型を定義するブロックの中は、フィールドもメソッドもすべて宣言なので、キーワードが無くても
+// 宣言として扱う（struct のフィールドや interface のメソッドに付いた doc を落とさないため）。
 // 関数本体とただのブロックの中に、doc を名乗れる宣言は無い。
 func startsDecl(next scan.Token, scope opener, spec scan.LangSpec) bool {
 	switch scope {
 	case openerFile:
-		return isDecl(next, spec)
+		return isDecl(next, spec) || isDeclPrefix(next, spec)
 	case openerTypeLike:
-		return next.Kind == scan.KindWord
+		return next.Kind == scan.KindWord || isDeclPrefix(next, spec)
 	default:
 		return false
 	}
 }
 
-// declName は、コメントの直後の宣言から名前を取り出す。書式の subject がこれを使う。
+// declName は、コメントの直後の宣言から名前を取り出す（書式の subject がこれを使う）。宣言の
+// 前後には、飛ばすべきものが3つある。属性（Rust の #[…]）、可視性の括弧（pub(crate) fn）、
+// そして Go のレシーバ（func (s *Scanner) Scan）。可視性の括弧は空白を挟まずに続くものだけを
+// 見るので、Go の const ( … ) のような括弧でまとめた宣言には当たらない。
 func declName(toks []scan.Token, i int, spec scan.LangSpec) string {
+	i = skipAttrs(toks, i, spec)
 	if i < 0 || i >= len(toks) || toks[i].Kind != scan.KindWord {
 		return ""
 	}
@@ -206,14 +220,22 @@ func declName(toks []scan.Token, i int, spec scan.LangSpec) string {
 
 	kw := toks[i].Text
 	i++
-	// 宣言キーワードが続くことがある（Rust の pub fn、TS の export function）。最後のものが本体。
-	for i < len(toks) && isDecl(toks[i], spec) {
-		kw = toks[i].Text
-		i++
+	for i < len(toks) {
+		// 宣言キーワードが続くことがある（Rust の pub fn、TS の export function）。最後のものが本体。
+		if isDecl(toks[i], spec) {
+			kw = toks[i].Text
+			i++
+			continue
+		}
+		if !slices.Contains(spec.FuncOpeners, kw) && isPunct(toks[i], "(") && adjacent(toks, i) {
+			i = skipGroup(toks, i, "(", ")")
+			continue
+		}
+		break
 	}
 	// Go のメソッドは名前の前にレシーバを挟む: func (s *Scanner) Scan(…)
-	if slices.Contains(spec.FuncOpeners, kw) && i < len(toks) && toks[i].Kind == scan.KindPunct && toks[i].Text == "(" {
-		i = skipParens(toks, i)
+	if slices.Contains(spec.FuncOpeners, kw) && i < len(toks) && isPunct(toks[i], "(") {
+		i = skipGroup(toks, i, "(", ")")
 	}
 	if i < len(toks) && toks[i].Kind == scan.KindWord {
 		return toks[i].Text
@@ -222,23 +244,49 @@ func declName(toks []scan.Token, i int, spec scan.LangSpec) string {
 	return ""
 }
 
-// skipParens は、i の「(」に対応する「)」の次の位置を返す。
-func skipParens(toks []scan.Token, i int) int {
+// skipAttrs は、宣言の前に置かれた属性（Rust の #[…] / #![…]）を飛ばし、宣言そのものの
+// 先頭を返す。属性の形をしていなければ、名前は取り出せない（len(toks) を返す）。
+func skipAttrs(toks []scan.Token, i int, spec scan.LangSpec) int {
+	for i < len(toks) && isDeclPrefix(toks[i], spec) {
+		i++
+		if i < len(toks) && isPunct(toks[i], "!") {
+			i++
+		}
+		if i < len(toks) && isPunct(toks[i], "[") {
+			i = skipGroup(toks, i, "[", "]")
+			continue
+		}
+		return len(toks)
+	}
+	return i
+}
+
+// skipGroup は、i の開き括弧に対応する閉じ括弧の次の位置を返す。
+func skipGroup(toks []scan.Token, i int, open, close string) int {
 	depth := 0
 	for ; i < len(toks); i++ {
 		if toks[i].Kind != scan.KindPunct {
 			continue
 		}
 		switch toks[i].Text {
-		case "(":
+		case open:
 			depth++
-		case ")":
+		case close:
 			if depth--; depth == 0 {
 				return i + 1
 			}
 		}
 	}
 	return i
+}
+
+// adjacent は、i のトークンが直前のトークンに空白を挟まずに続くことを見る。
+func adjacent(toks []scan.Token, i int) bool {
+	if i <= 0 {
+		return false
+	}
+	p := toks[i-1]
+	return toks[i].Line == p.Line && toks[i].Col == p.Col+len(p.Text)
 }
 
 func prevCode(toks []scan.Token, i int) *scan.Token {
@@ -261,6 +309,15 @@ func nextCode(toks []scan.Token, i int) (*scan.Token, int) {
 
 func isDecl(t scan.Token, spec scan.LangSpec) bool {
 	return t.Kind == scan.KindWord && slices.Contains(spec.DeclKeywords, t.Text)
+}
+
+// isDeclPrefix は、宣言の前に置かれる記号（Rust の属性を開く「#」）であることを見る。
+func isDeclPrefix(t scan.Token, spec scan.LangSpec) bool {
+	return t.Kind == scan.KindPunct && slices.Contains(spec.DeclPrefixes, t.Text)
+}
+
+func isPunct(t scan.Token, text string) bool {
+	return t.Kind == scan.KindPunct && t.Text == text
 }
 
 func isCloser(t scan.Token) bool {

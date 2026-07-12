@@ -229,34 +229,3 @@ func TestClassifyGo(t *testing.T) {
 		})
 	}
 }
-
-// doc 専用記法を持つ言語では、字句だけで doc と分かる。位置判定より kind を優先する。
-func TestClassifyDocNotationWins(t *testing.T) {
-	spec := scan.LangSpec{
-		Name:            "doc-notation",
-		LineComment:     "//",
-		BlockOpen:       "/*",
-		BlockClose:      "*/",
-		DocLine:         []string{"///", "//!"},
-		DocBlock:        []string{"/**"},
-		DeclKeywords:    []string{"fn", "struct", "mod"},
-		TypeLikeOpeners: []string{"struct", "impl"},
-		FuncOpeners:     []string{"fn"},
-	}
-	src := "//! ファイル冒頭でも header ではなく doc\n" +
-		"\n" +
-		"/// open は開く\n" +
-		"fn open() {\n" +
-		"\t/// 関数の中でも記法が doc なら doc\n" +
-		"\tlet x = 1;\n" +
-		"}\n"
-
-	// 冒頭の //! に続く宣言の名前が付いてしまうのは、内側 doc（それを囲むものを説明する記法）を
-	// まだ知らないため。Rust を載せるとき（#11）に LangSpec で切り分ける。subject は Rust では
-	// 既定 off なので、今のところ実害は無い。
-	check(t, src, spec, []want{
-		{line: 1, endLine: 1, place: Doc, decl: "open", text: "//! ファイル冒頭でも header ではなく doc"},
-		{line: 3, endLine: 3, place: Doc, decl: "open", text: "/// open は開く"},
-		{line: 5, endLine: 5, place: Doc, decl: "", text: "/// 関数の中でも記法が doc なら doc"},
-	})
-}

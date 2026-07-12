@@ -44,7 +44,7 @@ func (s *cstyleScanner) scan() []Token {
 func (s *cstyleScanner) tryComment() bool {
 	// doc 記法は行/ブロックコメント記法を接頭辞に含む（/// は // で始まる）ので、先に照合する。
 	for _, p := range s.spec.DocLine {
-		if s.has(p) {
+		if s.hasDoc(p) {
 			s.lineComment(KindDocLine)
 			return true
 		}
@@ -52,7 +52,7 @@ func (s *cstyleScanner) tryComment() bool {
 	// /**/ は空のブロックコメントであって doc ではない（TS の /** に食わせない）。
 	if !s.has(s.spec.BlockOpen + s.spec.BlockClose) {
 		for _, p := range s.spec.DocBlock {
-			if s.has(p) {
+			if s.hasDoc(p) {
 				s.blockComment(KindDocBlock)
 				return true
 			}
@@ -102,17 +102,45 @@ func (s *cstyleScanner) blockComment(kind Kind) {
 
 func (s *cstyleScanner) tryString() bool {
 	for _, sp := range s.spec.Strings {
-		if s.has(sp.Open) {
-			s.stringLit(sp)
-			return true
+		n, close, ok := sp.openAt(s.src, s.pos)
+		if !ok {
+			continue
 		}
+		if sp.OneRune && !s.oneRune(sp, n, close) {
+			continue
+		}
+		s.stringLit(sp, n, close)
+		return true
 	}
 	return false
 }
 
-func (s *cstyleScanner) stringLit(sp StringSpec) {
+// oneRune は、開きの引用符が1文字（またはエスケープ列1つ）だけを囲んで閉じるかを見る。これを
+// 見ずに引用符から次の引用符までを文字列にすると、Rust の fn f<'a>(x: &'a str) の 'a>(x: &' が
+// 文字列になり、行の後ろにコメントがあれば、それごと飲み込む。エスケープ列は長さが変わる
+// （\n / \u{1F600}）ので、同じ行で閉じることだけを見る。
+func (s *cstyleScanner) oneRune(sp StringSpec, n int, close string) bool {
+	p := s.pos + n
+	if p >= len(s.src) || s.src[p] == '\n' {
+		return false
+	}
+	if sp.Escape && s.src[p] == '\\' {
+		for p++; p < len(s.src) && s.src[p] != '\n'; p++ {
+			if hasAt(s.src, p, close) {
+				return true
+			}
+		}
+		return false
+	}
+	_, size := utf8.DecodeRune(s.src[p:])
+	return hasAt(s.src, p+size, close)
+}
+
+// stringLit は、開きの長さ n と、それに対応する閉じ記号を受けて文字列リテラルを1つ読む
+// （閉じ記号が開きに依るのは Rust の r#"…"# のような可変長の区切りがあるため）。
+func (s *cstyleScanner) stringLit(sp StringSpec, n int, close string) {
 	start, line, col := s.pos, s.line, s.col()
-	s.pos += len(sp.Open)
+	s.pos += n
 
 	for s.pos < len(s.src) {
 		c := s.src[s.pos]
@@ -131,8 +159,8 @@ func (s *cstyleScanner) stringLit(sp StringSpec) {
 			} else {
 				s.pos++
 			}
-		case s.has(sp.Close):
-			s.pos += len(sp.Close)
+		case s.has(close):
+			s.pos += len(close)
 			s.emit(KindString, line, col, s.line, string(s.src[start:s.pos]))
 			return
 		default:
@@ -167,10 +195,26 @@ func isWordRune(r rune) bool {
 
 // has は、現在位置が p で始まるかを見る（p が空なら常に偽）。
 func (s *cstyleScanner) has(p string) bool {
-	if p == "" || len(s.src)-s.pos < len(p) {
+	return hasAt(s.src, s.pos, p)
+}
+
+// hasDoc は、現在位置が doc 記法 p に当たるかを見る。記号を重ねた区切り線（//// … ）は
+// doc ではないので、記法の最後の1字がそのまま続くなら当たったことにしない（当てると、
+// 区切り線が doc の器を名乗り、そこが逃げ場になる）。
+func (s *cstyleScanner) hasDoc(p string) bool {
+	if !s.has(p) {
 		return false
 	}
-	return string(s.src[s.pos:s.pos+len(p)]) == p
+	next := s.pos + len(p)
+	return next >= len(s.src) || s.src[next] != p[len(p)-1]
+}
+
+// hasAt は、src の pos が p で始まるかを見る（p が空なら常に偽）。
+func hasAt(src []byte, pos int, p string) bool {
+	if p == "" || pos < 0 || len(src)-pos < len(p) {
+		return false
+	}
+	return string(src[pos:pos+len(p)]) == p
 }
 
 func (s *cstyleScanner) col() int {
