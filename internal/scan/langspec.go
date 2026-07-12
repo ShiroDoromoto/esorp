@@ -207,6 +207,27 @@ func TSXSpec() LangSpec {
 	return spec
 }
 
+// JSSpec は JavaScript の字句。TypeScript との差は型の語彙だけで、文字列・正規表現・コメントの
+// 読み方は同じ。型の語彙は載せない。type / interface / enum / namespace / declare は JS では
+// ただの識別子で、`type = "a"` のような代入を宣言と読むと、その直前のコメントが doc を名乗り、
+// 書式の検査が誤爆する。
+func JSSpec() LangSpec {
+	spec := TSSpec()
+	spec.Name = "javascript"
+	spec.DeclKeywords = []string{"function", "class", "const", "let", "var", "export", "import"}
+	spec.TypeLikeOpeners = []string{"class"}
+	return spec
+}
+
+// JSXSpec は JSX（.jsx）の字句。JS との差は JSX ひとつ。
+// .js に JSX を書く流儀もあるが、拡張子では見分けが付かない。.js は JSX 無しで読む。
+func JSXSpec() LangSpec {
+	spec := JSSpec()
+	spec.Name = "jsx"
+	spec.JSX = true
+	return spec
+}
+
 // SpecFor は、ファイルの拡張子からその言語の字句を選ぶ。設定の files: は glob なので、字句を
 // 持たない拡張子を cstyle ファミリに並べることもできる。持っていないことを黙って飲み込むと、
 // そのファイルは検査されないまま適合したように見えるので、引けなかったことを呼び手に返し、
@@ -221,6 +242,10 @@ func SpecFor(path string) (LangSpec, bool) {
 		return TSSpec(), true
 	case ".tsx":
 		return TSXSpec(), true
+	case ".js", ".mjs", ".cjs":
+		return JSSpec(), true
+	case ".jsx":
+		return JSXSpec(), true
 	}
 	return LangSpec{}, false
 }

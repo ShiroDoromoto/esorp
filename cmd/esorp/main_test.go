@@ -195,8 +195,8 @@ func TestBaselineUpdateThenCheck(t *testing.T) {
 // TestCheckWarnsOnUnscannableFiles は、字句を持たない言語のファイルについて、検査していないことを
 // 告げるのを確かめる（黙って適合にしない）。
 func TestCheckWarnsOnUnscannableFiles(t *testing.T) {
-	cfgPath := tree(t, "syntax:\n  cstyle:\n    files: [\"**/*.js\"]\n    mode: structural\n", "")
-	if err := os.WriteFile(filepath.Join(filepath.Dir(cfgPath), "a.js"), []byte("// x\n"), 0o600); err != nil {
+	cfgPath := tree(t, "syntax:\n  cstyle:\n    files: [\"**/*.py\"]\n    mode: structural\n", "")
+	if err := os.WriteFile(filepath.Join(filepath.Dir(cfgPath), "a.py"), []byte("# x\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -204,7 +204,7 @@ func TestCheckWarnsOnUnscannableFiles(t *testing.T) {
 	if got := run([]string{"check", "--config", cfgPath}, &stdout, &stderr); got != exitOK {
 		t.Fatalf("run(check) = %d, want %d", got, exitOK)
 	}
-	if !strings.Contains(stderr.String(), "a.js") {
+	if !strings.Contains(stderr.String(), "a.py") {
 		t.Errorf("読めなかったファイルを告げていない: %q", stderr.String())
 	}
 }

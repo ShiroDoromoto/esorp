@@ -106,7 +106,7 @@ func TestSpecForTS(t *testing.T) {
 	if spec, ok := SpecFor("src/app.tsx"); !ok || spec.Name != "tsx" || !spec.JSX {
 		t.Errorf("SpecFor(.tsx) = %q, %v; want tsx, true", spec.Name, ok)
 	}
-	if _, ok := SpecFor("src/app.js"); ok {
-		t.Error("SpecFor(.js) が字句を返した。持っていない字句は、持っていないと告げる")
+	if _, ok := SpecFor("src/app.vue"); ok {
+		t.Error("SpecFor(.vue) が字句を返した。持っていない字句は、持っていないと告げる")
 	}
 }

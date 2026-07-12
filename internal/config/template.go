@@ -81,6 +81,29 @@ syntax:
       - place: trailing
         label: ["TODO:"]
 
+  cstyle-js:
+    family: cstyle
+    files:
+      - "**/*.js"
+      - "**/*.mjs"
+      - "**/*.cjs"
+      - "**/*.jsx"
+
+      - "!**/node_modules/**"
+      - "!**/*.min.js"
+    mode: structural
+    allow:
+      - place: header
+
+      - place: doc
+        form:
+          headings: deny
+          paragraphs: 1
+          refs: deny
+
+      - place: trailing
+        label: ["TODO:"]
+
 # 違反時に提示する始末のしかた。既定は削除（履歴はバージョン管理が持っている）。
 # 残す価値のある判断だけ、行き先を文字列で指定できる。ツールは行き先を規定しない。
 disposition:
