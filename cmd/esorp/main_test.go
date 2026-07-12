@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -204,5 +205,115 @@ func TestCheckWarnsOnUnscannableFiles(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "a.rs") {
 		t.Errorf("読めなかったファイルを告げていない: %q", stderr.String())
+	}
+}
+
+// gitTree は、設定とソースを1つコミットした使い捨ての git リポジトリを作り、設定ファイルの
+// 場所を返す。--diff は git に依存するので、ここだけは本物の git を回す。
+func gitTree(t *testing.T, cfg, src string) string {
+	t.Helper()
+	cfgPath := tree(t, cfg, src)
+	dir := filepath.Dir(cfgPath)
+
+	for _, args := range [][]string{
+		{"init", "-q"},
+		{"add", "-A"},
+		{"-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "最初のコミット"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	return cfgPath
+}
+
+// TestCheckDiff は、--diff が変更行に重なるコメントだけを見ることを確かめる。既にあった違反は、
+// 同じファイルを触っても出てこない。
+func TestCheckDiff(t *testing.T) {
+	const committed = `// ファイル冒頭。
+package p
+
+// F は何かをする。
+func F() {
+	// 文の直前（leading）。既にある違反。
+	x := 1
+	_ = x
+}
+`
+	cfgPath := gitTree(t, testConfig, committed)
+
+	added := committed + "\n// 宙に浮いたコメント（orphan）。新しい違反。\n"
+	if err := os.WriteFile(filepath.Join(filepath.Dir(cfgPath), "a.go"), []byte(added), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var full strings.Builder
+	if got := run([]string{"check", "--config", cfgPath}, &full, io.Discard); got != exitViolated {
+		t.Fatalf("check = %d, want %d", got, exitViolated)
+	}
+	if !strings.Contains(full.String(), "2 件の違反") {
+		t.Fatalf("ツリー全体なら 2 件のはず:\n%s", full.String())
+	}
+
+	var only strings.Builder
+	if got := run([]string{"check", "--config", cfgPath, "--diff", "HEAD"}, &only, io.Discard); got != exitViolated {
+		t.Fatalf("check --diff = %d, want %d", got, exitViolated)
+	}
+	out := only.String()
+	if !strings.Contains(out, "1 件の違反") || !strings.Contains(out, "place=orphan") {
+		t.Errorf("--diff が変更行に絞れていない:\n%s", out)
+	}
+	if strings.Contains(out, "place=leading") {
+		t.Errorf("--diff が既にある違反を拾っている:\n%s", out)
+	}
+}
+
+// TestCheckDiffNoChange は、変更行に重なるコメントが無ければ --diff が適合になることを確かめる。
+func TestCheckDiffNoChange(t *testing.T) {
+	cfgPath := gitTree(t, testConfig, testSource)
+
+	var stdout strings.Builder
+	if got := run([]string{"check", "--config", cfgPath, "--diff", "HEAD"}, &stdout, io.Discard); got != exitOK {
+		t.Fatalf("check --diff = %d, want %d（変更が無ければ適合）\n%s", got, exitOK, stdout.String())
+	}
+}
+
+// TestCheckDiffBadRef は、解決できない <ref> が設定エラーになることを確かめる（黙って全部を通さない）。
+func TestCheckDiffBadRef(t *testing.T) {
+	cfgPath := gitTree(t, testConfig, testSource)
+
+	var stderr strings.Builder
+	if got := run([]string{"check", "--config", cfgPath, "--diff", "存在しない参照"}, io.Discard, &stderr); got != exitConfig {
+		t.Fatalf("check --diff 存在しない参照 = %d, want %d", got, exitConfig)
+	}
+	if !strings.Contains(stderr.String(), "分岐点") {
+		t.Errorf("何が起きたか告げていない: %q", stderr.String())
+	}
+}
+
+// TestCheckDiffTooManyArgs は、<ref> を2つ以上渡すのが使い方の誤りであることを確かめる。
+func TestCheckDiffTooManyArgs(t *testing.T) {
+	cfgPath := gitTree(t, testConfig, testSource)
+	if got := run([]string{"check", "--config", cfgPath, "--diff", "HEAD", "余分"}, io.Discard, io.Discard); got != exitConfig {
+		t.Errorf("余分な引数 = %d, want %d", got, exitConfig)
+	}
+}
+
+// TestCheckDiffUntrackedFile は、追跡していない新しいファイルを --diff が丸ごと見ることを
+// 確かめる（素通りさせない）。
+func TestCheckDiffUntrackedFile(t *testing.T) {
+	cfgPath := gitTree(t, testConfig, "// ファイル冒頭。\npackage p\n")
+	if err := os.WriteFile(filepath.Join(filepath.Dir(cfgPath), "b.go"), []byte(testSource), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout strings.Builder
+	if got := run([]string{"check", "--config", cfgPath, "--diff", "HEAD"}, &stdout, io.Discard); got != exitViolated {
+		t.Fatalf("check --diff = %d, want %d\n%s", got, exitViolated, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "3 件の違反") {
+		t.Errorf("新しいファイルの違反を拾えていない:\n%s", stdout.String())
 	}
 }

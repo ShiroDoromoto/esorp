@@ -1,13 +1,14 @@
 // Package audit は、設定に従ってファイルを集め、スキャナ → 位置クラス → 照合を回す。
 //
-// ここが check の骨格であり、CLI はフラグと終了コードだけを持つ。baseline による除外と
-// 差分モードによる絞り込みは、後続でこの走査の前後に挟まる。
+// ここが check の骨格であり、CLI はフラグと終了コードだけを持つ。baseline による除外は
+// 呼び手が走査の後に挟む（Result.Suppress）。
 package audit
 
 import (
 	"fmt"
 	"io/fs"
 	"maps"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -31,8 +32,9 @@ type Finding struct {
 	rule.Violation
 }
 
-// Result は1回の走査の結果。Skipped は、設定の files: には当たったが、その言語の字句を
-// 持っていないので読まなかったファイル（検査されていないことを呼び手が告げるための材料）。
+// Result は1回の走査の結果。Files と Comments は実際に監査した数（Selection で絞ったなら、
+// 絞った後の数）。Skipped は、設定の files: には当たったが、その言語の字句を持っていないので
+// 読まなかったファイル（検査されていないことを呼び手が告げるための材料）。
 // Baselined は baseline に載っていたので Findings から外した件数。
 type Result struct {
 	Files     int
@@ -64,20 +66,33 @@ func (r *Result) Suppress(b *baseline.Baseline) {
 	r.Findings = kept
 }
 
-// Run は、root の下のファイルを設定に照らして監査する。
-//
-// 返すエラーはファイルが読めない類のものだけで、違反は Result に載る（違反はエラーではない）。
-// baseline はここでは効かせない（呼び手が Suppress を呼ぶ）。baseline update は、
-// 抑止する前の全違反を要る。
-func Run(cfg *config.Config, root string) (*Result, error) {
+// Selection は、監査するコメントを行の範囲で絞る（両端を含む）。
+// check --diff が変更行に重なるコメントだけを残すために渡す。nil なら絞らない。
+type Selection func(path string, from, to int) bool
+
+// touches は、そのファイルに監査するものが1つでも残るかを見る。
+func (s Selection) touches(path string) bool {
+	return s == nil || s(path, 1, math.MaxInt)
+}
+
+// covers は、from..to 行のコメントを監査するかを見る。
+func (s Selection) covers(path string, from, to int) bool {
+	return s == nil || s(path, from, to)
+}
+
+// Run は、root の下のファイルを設定に照らして監査する。sel が非 nil なら、それに重なる
+// コメントだけを監査する（Files / Comments も、絞った後の数を数える）。返すエラーは
+// ファイルが読めない類のものだけで、違反は Result に載る（違反はエラーではない）。baseline は
+// ここでは効かせない（呼び手が Suppress を呼ぶ）。baseline update は、抑止する前の全違反を要る。
+func Run(cfg *config.Config, root string, sel Selection) (*Result, error) {
 	res := &Result{Findings: []Finding{}}
 
-	paths, err := collect(cfg, root)
+	paths, err := collect(cfg, root, sel)
 	if err != nil {
 		return nil, err
 	}
 	for _, p := range paths {
-		if err := auditFile(cfg, root, p, res); err != nil {
+		if err := auditFile(cfg, root, p, sel, res); err != nil {
 			return nil, err
 		}
 	}
@@ -104,11 +119,11 @@ type matched struct {
 	syntax string
 }
 
-// collect は、root の下を歩き、設定の files: に当たったファイルをパス順に集める。
-//
-// 1つのファイルが複数の syntax エントリに当たったときは、名前順で最初のものを採る。
-// 設定の書き手が重なりを作らない限り起きないが、起きたときに走査の結果が揺れないようにする。
-func collect(cfg *config.Config, root string) ([]matched, error) {
+// collect は、root の下を歩き、設定の files: に当たったファイルをパス順に集める。sel が非 nil
+// なら、1行も当たらないファイルは読まない。1つのファイルが複数の syntax エントリに当たったときは、
+// 名前順で最初のものを採る。設定の書き手が重なりを作らない限り起きないが、起きたときに走査の
+// 結果が揺れないようにする。
+func collect(cfg *config.Config, root string, sel Selection) ([]matched, error) {
 	names := slices.Sorted(maps.Keys(cfg.Syntax))
 
 	var out []matched
@@ -129,6 +144,9 @@ func collect(cfg *config.Config, root string) ([]matched, error) {
 			return err
 		}
 		rel = filepath.ToSlash(rel)
+		if !sel.touches(rel) {
+			return nil
+		}
 
 		for _, name := range names {
 			if matchAny(cfg.Syntax[name].Files, rel) {
@@ -154,8 +172,10 @@ func matchAny(globs []string, path string) bool {
 	return false
 }
 
-// auditFile は、ファイル1つを読み、器の違反を Result に足す。
-func auditFile(cfg *config.Config, root string, m matched, res *Result) error {
+// auditFile は、ファイル1つを読み、器の違反を Result に足す。sel で落ちるコメントも照合までは
+// 回し、出現順だけ進めて報告しない。ここを飛ばすと、同じ違反のキーが check と check --diff で
+// 食い違い、baseline が効かなくなる。
+func auditFile(cfg *config.Config, root string, m matched, sel Selection, res *Result) error {
 	spec, ok := scan.SpecFor(m.path)
 	if !ok {
 		res.Skipped = append(res.Skipped, m.path)
@@ -170,7 +190,11 @@ func auditFile(cfg *config.Config, root string, m matched, res *Result) error {
 	syn := cfg.Syntax[m.syntax]
 	comments := place.Classify(scan.CStyle(src, spec), spec)
 	res.Files++
-	res.Comments += len(comments)
+	for _, c := range comments {
+		if sel.covers(m.path, c.Line, c.EndLine) {
+			res.Comments++
+		}
+	}
 
 	// mode: content-only は器を問わない。層2（rules）が入るまで、見るものが無い。
 	if syn.Mode != "structural" {
@@ -185,6 +209,9 @@ func auditFile(cfg *config.Config, root string, m matched, res *Result) error {
 		seed := v.ID + "\x00" + body
 		key := baseline.Key(m.path, v.ID, body, occurrence[seed])
 		occurrence[seed]++
+		if !sel.covers(m.path, c.Line, c.EndLine) {
+			return
+		}
 		res.Findings = append(res.Findings, Finding{Path: m.path, Syntax: m.syntax, Key: key, Violation: v})
 	}
 

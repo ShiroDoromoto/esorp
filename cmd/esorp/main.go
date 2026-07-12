@@ -11,6 +11,7 @@ import (
 	"github.com/ShiroDoromoto/esorp/internal/audit"
 	"github.com/ShiroDoromoto/esorp/internal/baseline"
 	"github.com/ShiroDoromoto/esorp/internal/config"
+	"github.com/ShiroDoromoto/esorp/internal/diff"
 	"github.com/ShiroDoromoto/esorp/internal/report"
 )
 
@@ -22,16 +23,23 @@ const (
 	exitConfig   = 2 // 設定エラー（設定が読めない・スキーマ違反・使い方の誤り・ファイルが読めない）
 )
 
+// defaultRef は --diff の比較先の既定。CI でも pre-commit でも、既定の関心は「main から見た自分の変更」。
+const defaultRef = "origin/HEAD"
+
 const usage = `esorp — コメントの置き場所と書式を監査する
 
 使い方:
-  esorp check             設定に従いツリー全体を監査する
-  esorp baseline update   既存の違反をスナップショットする（減る方向のみ）
-  esorp help              この使い方を表示する
+  esorp check                設定に従いツリー全体を監査する
+  esorp check --diff [<ref>] 変更分のみ監査する（既定の <ref> は origin/HEAD）
+  esorp baseline update      既存の違反をスナップショットする（減る方向のみ）
+  esorp help                 この使い方を表示する
 
 check のフラグ:
   --config <path>   設定ファイルの場所（既定: esorp.yaml）。この場所がツリーの根になる
   --format <fmt>    出力の形式（text | json、既定: text）
+  --diff            <ref> と HEAD の分岐点から作業ツリーまでに追加された行に重なる
+                    コメントだけを監査する（pre-commit / PR 向け）。baseline も併せて効く。
+                    <ref> は末尾に置く（他のフラグは <ref> より前に並べる）
 
 baseline update のフラグ:
   --config <path>   設定ファイルの場所（既定: esorp.yaml）
@@ -73,11 +81,8 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "esorp.yaml", "設定ファイルの場所")
 	format := fs.String("format", "text", "出力の形式（text | json）")
+	diffMode := fs.Bool("diff", false, "変更行に重なるコメントだけを監査する")
 	if err := fs.Parse(args); err != nil {
-		return exitConfig
-	}
-	if fs.NArg() > 0 {
-		fmt.Fprintf(stderr, "esorp check: 余分な引数 %q（監査するツリーは --config の場所で決まります）\n", fs.Arg(0))
 		return exitConfig
 	}
 	if *format != "text" && *format != "json" {
@@ -85,7 +90,29 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		return exitConfig
 	}
 
-	a, code := scan(*configPath, stderr)
+	ref := defaultRef
+	switch {
+	case !*diffMode && fs.NArg() > 0:
+		fmt.Fprintf(stderr, "esorp check: 余分な引数 %q（監査するツリーは --config の場所で決まります）\n", fs.Arg(0))
+		return exitConfig
+	case fs.NArg() > 1:
+		fmt.Fprintf(stderr, "esorp check --diff: 余分な引数 %q（取るのは比較先の <ref> 1つだけです）\n", fs.Arg(1))
+		return exitConfig
+	case fs.NArg() == 1:
+		ref = fs.Arg(0)
+	}
+
+	var sel audit.Selection
+	if *diffMode {
+		ranges, err := diff.Changed(filepath.Dir(*configPath), ref)
+		if err != nil {
+			fmt.Fprintf(stderr, "esorp: %v\n", err)
+			return exitConfig
+		}
+		sel = ranges.Overlaps
+	}
+
+	a, code := scan(*configPath, sel, stderr)
 	if code != exitOK {
 		return code
 	}
@@ -129,7 +156,7 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 		return exitConfig
 	}
 
-	a, code := scan(*configPath, stderr)
+	a, code := scan(*configPath, nil, stderr)
 	if code != exitOK {
 		return code
 	}
@@ -158,9 +185,10 @@ type audited struct {
 	baselinePath string
 }
 
-// scan は、設定を読み、ツリーを走査し、baseline を読む。baseline はまだ効かせない
-// （baseline update は、抑止する前の全違反を要る）。
-func scan(configPath string, stderr io.Writer) (*audited, int) {
+// scan は、設定を読み、ツリーを走査し、baseline を読む。sel は監査するコメントの絞り込み
+// （--diff）で、nil なら絞らない。baseline はまだ効かせない（baseline update は、抑止する前の
+// 全違反を要る）。
+func scan(configPath string, sel audit.Selection, stderr io.Writer) (*audited, int) {
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -169,7 +197,7 @@ func scan(configPath string, stderr io.Writer) (*audited, int) {
 
 	// 設定ファイルの置かれた場所が、監査するツリーの根。設定の glob は、ここからの相対パスに当たる。
 	root := filepath.Dir(configPath)
-	res, err := audit.Run(cfg, root)
+	res, err := audit.Run(cfg, root, sel)
 	if err != nil {
 		fmt.Fprintf(stderr, "esorp: %v\n", err)
 		return nil, exitConfig
