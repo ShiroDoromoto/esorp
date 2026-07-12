@@ -15,6 +15,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 
+	"github.com/ShiroDoromoto/esorp/internal/baseline"
 	"github.com/ShiroDoromoto/esorp/internal/config"
 	"github.com/ShiroDoromoto/esorp/internal/place"
 	"github.com/ShiroDoromoto/esorp/internal/rule"
@@ -22,24 +23,52 @@ import (
 )
 
 // Finding は違反1件に、それがどのファイルのどの syntax エントリで見つかったかを添えたもの。
+// Key は baseline の照合に使う（行番号を含まない → 無関係な編集でずれない）。
 type Finding struct {
 	Path   string // ツリーの根からの相対パス
 	Syntax string // 当たった syntax エントリの名前
+	Key    string
 	rule.Violation
 }
 
 // Result は1回の走査の結果。Skipped は、設定の files: には当たったが、その言語の字句を
 // 持っていないので読まなかったファイル（検査されていないことを呼び手が告げるための材料）。
+// Baselined は baseline に載っていたので Findings から外した件数。
 type Result struct {
-	Files    int
-	Comments int
-	Findings []Finding
-	Skipped  []string
+	Files     int
+	Comments  int
+	Findings  []Finding
+	Skipped   []string
+	Baselined int
+}
+
+// Entries は、今の違反を baseline のエントリに写す。baseline update が書き出すもの。
+func (r *Result) Entries() []baseline.Entry {
+	out := make([]baseline.Entry, 0, len(r.Findings))
+	for _, f := range r.Findings {
+		out = append(out, baseline.Entry{Key: f.Key, Path: f.Path, ID: f.ID})
+	}
+	return out
+}
+
+// Suppress は、baseline に載っている違反を Findings から外す。
+func (r *Result) Suppress(b *baseline.Baseline) {
+	kept := r.Findings[:0]
+	for _, f := range r.Findings {
+		if b.Has(f.Key) {
+			r.Baselined++
+			continue
+		}
+		kept = append(kept, f)
+	}
+	r.Findings = kept
 }
 
 // Run は、root の下のファイルを設定に照らして監査する。
 //
 // 返すエラーはファイルが読めない類のものだけで、違反は Result に載る（違反はエラーではない）。
+// baseline はここでは効かせない（呼び手が Suppress を呼ぶ）。baseline update は、
+// 抑止する前の全違反を要る。
 func Run(cfg *config.Config, root string) (*Result, error) {
 	res := &Result{Findings: []Finding{}}
 
@@ -147,15 +176,27 @@ func auditFile(cfg *config.Config, root string, m matched, res *Result) error {
 	if syn.Mode != "structural" {
 		return nil
 	}
+
+	// 同じ本文の同じ違反が1つのファイルに何度も現れることがある（型の全フィールドに付いた
+	// 同じ行末コメントなど）。baseline のキーは行番号を持たないので、出現順で区別する。
+	occurrence := map[string]int{}
+	add := func(c place.Comment, v rule.Violation) {
+		body := scan.Body(c.Text, spec)
+		seed := v.ID + "\x00" + body
+		key := baseline.Key(m.path, v.ID, body, occurrence[seed])
+		occurrence[seed]++
+		res.Findings = append(res.Findings, Finding{Path: m.path, Syntax: m.syntax, Key: key, Violation: v})
+	}
+
 	for _, c := range comments {
 		a, v := rule.Vessel(c, syn.Allow, cfg.Disposition, spec)
 		if v != nil {
-			res.Findings = append(res.Findings, Finding{Path: m.path, Syntax: m.syntax, Violation: *v})
+			add(c, *v)
 			continue
 		}
 		// 器を通ったコメントだけが書式の検査に進む（順序は 器 → 書式 → 語彙）。
 		for _, fv := range rule.Form(c, a.Form, cfg.Disposition, spec) {
-			res.Findings = append(res.Findings, Finding{Path: m.path, Syntax: m.syntax, Violation: fv})
+			add(c, fv)
 		}
 	}
 	return nil

@@ -20,7 +20,7 @@ import (
 //	  この位置のコメントは許可されていません。
 func Text(w io.Writer, res *audit.Result) error {
 	if len(res.Findings) == 0 {
-		_, err := fmt.Fprintf(w, "esorp: 違反はありません（%d ファイル / %d コメント）\n", res.Files, res.Comments)
+		_, err := fmt.Fprintf(w, "esorp: 違反はありません（%d ファイル / %d コメント%s）\n", res.Files, res.Comments, baselined(res))
 		return err
 	}
 
@@ -31,10 +31,18 @@ func Text(w io.Writer, res *audit.Result) error {
 		indent(&b, f.Message)
 		b.WriteByte('\n')
 	}
-	fmt.Fprintf(&b, "%d 件の違反（%d ファイル / %d コメント）\n", len(res.Findings), res.Files, res.Comments)
+	fmt.Fprintf(&b, "%d 件の違反（%d ファイル / %d コメント%s）\n", len(res.Findings), res.Files, res.Comments, baselined(res))
 
 	_, err := io.WriteString(w, b.String())
 	return err
+}
+
+// baselined は、baseline で抑えた件数を添える。抑えているものがあることを、必ず見える所に出す。
+func baselined(res *audit.Result) string {
+	if res.Baselined == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" / baseline が %d 件を抑えています", res.Baselined)
 }
 
 // indent は、複数行の塊を2つ空けて字下げする。空文字列は何も書かない（disposition は省略できる）。
@@ -61,6 +69,7 @@ type jsonSummary struct {
 	Files      int `json:"files"`
 	Comments   int `json:"comments"`
 	Violations int `json:"violations"`
+	Baselined  int `json:"baselined"`
 }
 
 type jsonViolation struct {
@@ -82,6 +91,7 @@ func JSON(w io.Writer, res *audit.Result) error {
 			Files:      res.Files,
 			Comments:   res.Comments,
 			Violations: len(res.Findings),
+			Baselined:  res.Baselined,
 		},
 		Violations: make([]jsonViolation, 0, len(res.Findings)),
 		Skipped:    res.Skipped,

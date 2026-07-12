@@ -151,6 +151,46 @@ func TestCheckJSONOutput(t *testing.T) {
 	}
 }
 
+// baseline に載せた違反は check から消え、CI が緑になる。
+// そして、載せたコメントの本文を撫でるとキーが変わり、違反として戻ってくる（意図した帰結）。
+func TestBaselineUpdateThenCheck(t *testing.T) {
+	cfgPath := tree(t, testConfig+"baseline: .esorp-baseline.json\n", testSource)
+	src := filepath.Join(filepath.Dir(cfgPath), "a.go")
+
+	if got := run([]string{"check", "--config", cfgPath}, io.Discard, io.Discard); got != exitViolated {
+		t.Fatalf("baseline に載せる前は違反あり: %d", got)
+	}
+
+	// --allow-new を付けなければ、新しい違反は1件も載らない（ラチェット）。
+	if got := run([]string{"baseline", "update", "--config", cfgPath}, io.Discard, io.Discard); got != exitOK {
+		t.Fatalf("baseline update = %d", got)
+	}
+	if got := run([]string{"check", "--config", cfgPath}, io.Discard, io.Discard); got != exitViolated {
+		t.Fatalf("--allow-new 無しで新しい違反が載ってしまっている: %d", got)
+	}
+
+	if got := run([]string{"baseline", "update", "--allow-new", "--config", cfgPath}, io.Discard, io.Discard); got != exitOK {
+		t.Fatalf("baseline update --allow-new = %d", got)
+	}
+
+	var stdout strings.Builder
+	if got := run([]string{"check", "--config", cfgPath}, &stdout, io.Discard); got != exitOK {
+		t.Fatalf("baseline に載せた後は適合のはず: %d\n%s", got, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "baseline が 3 件を抑えています") {
+		t.Errorf("抑えた件数を告げていない: %q", stdout.String())
+	}
+
+	// 本文を撫でるとキーが変わる。触ったなら、あなたがそのコメントの持ち主になる。
+	touched := strings.Replace(testSource, "// 文の直前（leading）。", "// 文の直前（leading）。少し足す。", 1)
+	if err := os.WriteFile(src, []byte(touched), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := run([]string{"check", "--config", cfgPath}, io.Discard, io.Discard); got != exitViolated {
+		t.Fatal("baseline に載せたコメントを編集したのに、違反として戻ってきていない")
+	}
+}
+
 // 字句を持たない言語のファイルは、検査していないことを告げる（黙って適合にしない）。
 func TestCheckWarnsOnUnscannableFiles(t *testing.T) {
 	cfgPath := tree(t, "syntax:\n  cstyle:\n    files: [\"**/*.rs\"]\n    mode: structural\n", "")
