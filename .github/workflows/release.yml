@@ -55,6 +55,8 @@ jobs:
         run: wharfy publish --yes
 
       # 配って終わりにしない。消費者の側から入れて、動くところまでを1周とする。
+      # fury は取り込みに時間がかかるので、ここで落ちても配布が壊れたとは限らない。
+      # 確かめ直すときは Verify ワークフロー（verify.yml）を単独で叩く。
       - name: 消費者側から入れて確かめる
         env:
           GITHUB_TOKEN: ${{ secrets.WHARFY_GITHUB_TOKEN }}
