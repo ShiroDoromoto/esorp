@@ -14,6 +14,9 @@ type StringSpec struct {
 // LangSpec は cstyle ファミリの中の言語差を吸収する。
 // ファミリが同じでも文字列リテラルの文法は言語ごとに違い、そこを取り違えると
 // 文字列の中の // をコメントと誤検知する。
+// 字句に関わらない DeclKeywords / TypeLikeOpeners / FuncOpeners も、言語差である以上ここに置く。
+// 使うのは位置クラスの判定（internal/place）だが、判定そのものは言語をまたいで同じであり、
+// 言語ごとに違うのはこの語彙だけ。
 type LangSpec struct {
 	Name        string
 	LineComment string
@@ -23,6 +26,10 @@ type LangSpec struct {
 	DocLine     []string     // doc 専用の行コメント記法。Go は持たない
 	DocBlock    []string     // doc 専用のブロックコメント記法。Go は持たない
 	Strings     []StringSpec // 長い接頭辞から先に照合する
+
+	DeclKeywords    []string // 宣言を開始するキーワード
+	TypeLikeOpeners []string // 型を定義するブロックを開くキーワード（この中の宣言は doc を名乗れる）
+	FuncOpeners     []string // 関数本体を開くキーワード（この中では doc を名乗れない）
 }
 
 // GoSpec は Go の字句。
@@ -41,5 +48,8 @@ func GoSpec() LangSpec {
 			{Open: "'", Close: "'", Escape: true},
 			{Open: "`", Close: "`", Multiline: true}, // 生文字列: エスケープ無し・改行可
 		},
+		DeclKeywords:    []string{"func", "type", "var", "const", "package", "import"},
+		TypeLikeOpeners: []string{"type", "struct", "interface"},
+		FuncOpeners:     []string{"func"},
 	}
 }
