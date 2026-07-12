@@ -34,10 +34,15 @@ const defaultRef = "origin/HEAD"
 const usage = `esorp — コメントの置き場所と書式を監査する
 
 使い方:
+  esorp init                 設定ファイル（esorp.yaml）を生成する
   esorp check                設定に従いツリー全体を監査する
   esorp check --diff [<ref>] 変更分のみ監査する（既定の <ref> は origin/HEAD）
   esorp baseline update      既存の違反をスナップショットする（減る方向のみ）
   esorp help                 この使い方を表示する
+
+init のフラグ:
+  --config <path>   生成する場所（既定: esorp.yaml）
+  --force           既にある設定ファイルを上書きする
 
 check のフラグ:
   --config <path>   設定ファイルの場所（既定: esorp.yaml）。この場所がツリーの根になる
@@ -67,6 +72,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	switch args[0] {
+	case "init":
+		return runInit(args[1:], stdout, stderr)
 	case "check":
 		return runCheck(args[1:], stdout, stderr)
 	case "baseline":
@@ -79,6 +86,34 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprint(stderr, usage)
 		return exitConfig
 	}
+}
+
+// runInit は設定ファイルを生成する。生成された設定はその時点でユーザーのものになり、ツールを
+// 更新しても勝手には変わらない。だから既にあるものを黙って上書きしない。
+func runInit(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("init", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", "esorp.yaml", "生成する場所")
+	force := fs.Bool("force", false, "既にある設定ファイルを上書きする")
+	if err := fs.Parse(args); err != nil {
+		return exitConfig
+	}
+	if fs.NArg() > 0 {
+		fmt.Fprintf(stderr, "esorp init: 余分な引数 %q（生成する場所は --config で指定します）\n", fs.Arg(0))
+		return exitConfig
+	}
+
+	if _, err := os.Stat(*configPath); err == nil && !*force {
+		fmt.Fprintf(stderr, "esorp init: %s は既にあります（上書きするなら --force）\n", *configPath)
+		return exitConfig
+	}
+	if err := os.WriteFile(*configPath, []byte(config.Template), 0o644); err != nil {
+		fmt.Fprintf(stderr, "esorp: %v\n", err)
+		return exitConfig
+	}
+
+	fmt.Fprintf(stdout, "esorp: %s を書きました。使わない言語のエントリは削ってください\n", *configPath)
+	return exitOK
 }
 
 func runCheck(args []string, stdout, stderr io.Writer) int {

@@ -1,0 +1,108 @@
+package config
+
+// Template は esorp init が生成する設定。既定は実行時のフォールバックではなく、ここにだけ形として
+// 存在する。生成された時点でユーザーのものになり、ツールを更新しても勝手には変わらない。言語ごとに
+// syntax エントリを分けてあるのは、書式の subject（1行目が宣言の名前で始まること）が Go の doc
+// 規約であって、Rust / TypeScript の規約ではないため。
+const Template = `# esorp.yaml — コメントの置き場所と書式の宣言。
+# ここに書かれているものが、動いているものの全部。隠れた既定は無い。
+# 使わない言語のエントリは削ってください。
+
+syntax:
+  cstyle-go:
+    family: cstyle
+    files:
+      - "**/*.go"
+    mode: structural
+
+    # 許可する「器」。ここに列挙されていない器のコメントは、中身が何であれ違反。
+    allow:
+      - place: header               # ファイル冒頭（ライセンス等）
+
+      - place: doc                  # 宣言に紐づく説明
+        # 器の中の「書式」。形だけを見る。語彙は見ない。
+        form:
+          subject: required         # 1行目が、紐づく宣言の名前で始まること（Go の doc 規約）
+          headings: deny            # 見出しを書けない（履歴は見出しを付けて書かれる）
+          paragraphs: 1             # 段落は1つ（背景を段落として付け足せない）
+          refs: deny                # #123 形式の追跡番号への参照を書けない
+
+      - place: trailing             # 行末。ラベル必須
+        label: ["SAFETY:", "TODO:", "nolint:"]
+
+      # place: leading  — 許可しない（文の直前の自由コメント）
+      # place: orphan   — 許可しない（どこにも紐づかない浮いたコメント）
+      #
+      # 履歴・事情・作業メモが流れ込むのはこの2つ。許可しなければ、語彙を一切見ずに、
+      # それらは構造的に書けなくなる。
+
+  cstyle-rust:
+    family: cstyle
+    files:
+      - "**/*.rs"
+    mode: structural
+    allow:
+      - place: header
+
+      - place: doc
+        form:
+          # subject は Go の doc 規約。Rust には無いので求めない。
+          headings: deny
+          paragraphs: 1
+          refs: deny
+
+      - place: trailing
+        label: ["SAFETY:", "TODO:"]
+
+  cstyle-ts:
+    family: cstyle
+    files:
+      - "**/*.ts"
+      - "**/*.mts"
+      - "**/*.cts"
+      - "**/*.tsx"
+    mode: structural
+    allow:
+      - place: header
+
+      - place: doc
+        form:
+          headings: deny
+          paragraphs: 1
+          refs: deny
+
+      - place: trailing
+        label: ["TODO:"]
+
+# 違反時に提示する始末のしかた。既定は削除（履歴はバージョン管理が持っている）。
+# 残す価値のある判断だけ、行き先を文字列で指定できる。ツールは行き先を規定しない。
+disposition:
+  place-not-allowed: |
+    この位置のコメントは許可されていません。
+    目の前のコードの説明なら、宣言に紐づく doc コメントに移してください。
+    変更の履歴なら、バージョン管理が保持しているので削除してください。
+  label-required: |
+    この位置のコメントにはラベルが必要です。
+  form-subject: |
+    doc コメントは、その宣言の説明です。宣言の名前で始めてください。
+    名前で始められない内容なら、それは宣言の説明ではありません。
+  form-headings: |
+    doc コメントに見出しは書けません。
+  form-paragraphs: |
+    doc コメントの段落は1つです。付け足された段落は、多くの場合、目の前のコードの説明ではありません。
+  form-refs: |
+    追跡番号への参照です。読み手（将来の参加者・外部の読者・次のエージェント）は追跡システムを
+    辿れません。削除してください。
+
+# git が「自分のコードではない」と宣言しているものを、esorp も自分のコードとして扱わない。
+# gitignore を黙って見にいくのは設定に見えない挙動になるので、方針としてここに書く。
+respect_gitignore: true
+
+# 層2（語彙）。既定は空。
+# 文字列マッチは必ず誤検知するため、ツールは既定を持たない。プロジェクトが自分で足す。
+rules: []
+
+# 今ある違反のスナップショット。載せた違反は報告されないが、一覧として見える状態で残る
+# （esorp baseline update で書く。減る方向にしか動かない）。
+baseline: .esorp-baseline.json
+`

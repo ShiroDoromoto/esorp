@@ -371,3 +371,56 @@ func TestCheckWithoutRespectGitignore(t *testing.T) {
 		t.Errorf("respect_gitignore 無しで vendor/ が落ちている: %d", got)
 	}
 }
+
+// TestInitWritesUsableConfig は、生成した設定でそのまま check が回ることを確かめる。生成した
+// 設定がその場で設定エラーになれば、最初の一歩で信頼を失う。
+func TestInitWritesUsableConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "esorp.yaml")
+	src := "// F は何かをする。\nfunc F() {}\n"
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr strings.Builder
+	if got := run([]string{"init", "--config", cfgPath}, &stdout, &stderr); got != exitOK {
+		t.Fatalf("run(init) = %d, want %d\n%s", got, exitOK, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "esorp.yaml") {
+		t.Errorf("生成した場所を告げていない: %q", stdout.String())
+	}
+
+	stdout.Reset()
+	if got := run([]string{"check", "--config", cfgPath}, &stdout, &stderr); got != exitOK {
+		t.Fatalf("生成した設定で check = %d, want %d\n%s", got, exitOK, stdout.String())
+	}
+}
+
+// TestInitDoesNotOverwrite は、既にある設定を黙って上書きしないことを確かめる。生成された設定は
+// その時点でユーザーのものであり、手を入れた分は戻ってこない。
+func TestInitDoesNotOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "esorp.yaml")
+	mine := []byte("syntax: {}\n")
+	if err := os.WriteFile(cfgPath, mine, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr strings.Builder
+	if got := run([]string{"init", "--config", cfgPath}, &stdout, &stderr); got != exitConfig {
+		t.Fatalf("run(init) = %d, want %d（既にあるなら断る）", got, exitConfig)
+	}
+	if body, err := os.ReadFile(cfgPath); err != nil || string(body) != string(mine) {
+		t.Fatalf("手元の設定が書き換えられた: %q", string(body))
+	}
+	if !strings.Contains(stderr.String(), "--force") {
+		t.Errorf("上書きの手段を告げていない: %q", stderr.String())
+	}
+
+	if got := run([]string{"init", "--config", cfgPath, "--force"}, &stdout, &stderr); got != exitOK {
+		t.Fatalf("run(init --force) = %d, want %d", got, exitOK)
+	}
+	if body, err := os.ReadFile(cfgPath); err != nil || string(body) == string(mine) {
+		t.Fatal("--force なのに上書きされていない")
+	}
+}

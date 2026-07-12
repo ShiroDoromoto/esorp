@@ -11,38 +11,6 @@ import (
 	"github.com/ShiroDoromoto/esorp/internal/scan"
 )
 
-// template は、esorp init が生成する設定テンプレートと同じ形。これが読めることを確かめる。
-const template = `
-syntax:
-  cstyle:
-    files:
-      - "**/*.go"
-      - "**/*.rs"
-    mode: structural
-    allow:
-      - place: header
-
-      - place: doc
-        form:
-          subject: required
-          headings: deny
-          paragraphs: 1
-          refs: deny
-
-      - place: trailing
-        label: ["SAFETY:", "TODO:", "nolint:"]
-
-disposition:
-  place-not-allowed: |
-    この位置のコメントは許可されていません。
-
-respect_gitignore: true
-
-rules: []
-
-baseline: .esorp-baseline.json
-`
-
 func load(t *testing.T, body string) (*Config, error) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "esorp.yaml")
@@ -52,25 +20,51 @@ func load(t *testing.T, body string) (*Config, error) {
 	return Load(path)
 }
 
+// TestLoadTemplate は、esorp init が生成するテンプレートそのものを読み、subject が Go のエントリに
+// だけ立つこと（Rust / TypeScript の doc 規約ではない）と、leading / orphan をどのエントリも許可
+// しないこと（それがこのツールの効き目そのもの）を確かめる。生成した設定がその場で設定エラーに
+// なれば、最初の一歩で信頼を失う。
 func TestLoadTemplate(t *testing.T) {
-	cfg, err := load(t, template)
+	cfg, err := load(t, Template)
 	if err != nil {
 		t.Fatalf("テンプレートが読めない: %v", err)
 	}
 
-	s := cfg.Syntax["cstyle"]
-	if s.Mode != "structural" || len(s.Files) != 2 || len(s.Allow) != 3 {
-		t.Fatalf("syntax.cstyle = %#v", s)
+	for name, wantSubject := range map[string]string{
+		"cstyle-go":   "required",
+		"cstyle-rust": "",
+		"cstyle-ts":   "",
+	} {
+		s, ok := cfg.Syntax[name]
+		if !ok {
+			t.Fatalf("syntax.%s がない", name)
+		}
+		if s.Family != "cstyle" || s.Mode != "structural" || len(s.Allow) != 3 {
+			t.Fatalf("syntax.%s = %#v", name, s)
+		}
+		if got := s.Allow[1].PlaceValue(); got != place.Doc {
+			t.Errorf("syntax.%s.allow[1].place = %v, want doc", name, got)
+		}
+		f := s.Allow[1].Form
+		if f == nil || f.Paragraphs == nil || *f.Paragraphs != 1 || f.Headings != "deny" || f.Refs != "deny" {
+			t.Fatalf("syntax.%s.allow[1].form = %#v", name, f)
+		}
+		if f.Subject != wantSubject {
+			t.Errorf("syntax.%s.allow[1].form.subject = %q, want %q", name, f.Subject, wantSubject)
+		}
+		if len(s.Allow[2].Label) == 0 {
+			t.Errorf("syntax.%s.allow[2].label が空（行末はラベル必須）", name)
+		}
 	}
-	if got := s.Allow[1].PlaceValue(); got != place.Doc {
-		t.Errorf("allow[1].place = %v, want doc", got)
+
+	for name, s := range cfg.Syntax {
+		for _, a := range s.Allow {
+			if p := a.PlaceValue(); p == place.Leading || p == place.Orphan {
+				t.Errorf("syntax.%s が %v を許可している", name, p)
+			}
+		}
 	}
-	if f := s.Allow[1].Form; f == nil || f.Subject != "required" || f.Paragraphs == nil || *f.Paragraphs != 1 {
-		t.Errorf("allow[1].form = %#v", f)
-	}
-	if got := s.Allow[2].Label; len(got) != 3 || got[0] != "SAFETY:" {
-		t.Errorf("allow[2].label = %v", got)
-	}
+
 	if cfg.Baseline != ".esorp-baseline.json" {
 		t.Errorf("baseline = %q", cfg.Baseline)
 	}
@@ -78,7 +72,7 @@ func TestLoadTemplate(t *testing.T) {
 		t.Error("respect_gitignore = false, want true")
 	}
 	if len(cfg.Rules) != 0 {
-		t.Errorf("rules = %v, want 空", cfg.Rules)
+		t.Errorf("rules = %v, want 空（層2 の既定は持たない）", cfg.Rules)
 	}
 }
 
