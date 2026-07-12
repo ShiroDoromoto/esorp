@@ -40,6 +40,7 @@ func Form(c place.Comment, f *config.Form, disp map[string]string, spec scan.Lan
 		return nil
 	}
 	lines := scan.BodyLines(c.Text, spec)
+	code := scan.CodeLines(lines, spec)
 	body := strings.Join(lines, "\n")
 
 	var out []Violation
@@ -50,10 +51,10 @@ func Form(c place.Comment, f *config.Form, disp map[string]string, spec scan.Lan
 	if f.Subject == "required" && c.Decl != "" && !startsWithDecl(body, c.Decl) {
 		add(FormSubject)
 	}
-	if f.Headings == "deny" && hasHeading(lines) {
+	if f.Headings == "deny" && hasHeading(lines, code) {
 		add(FormHeadings)
 	}
-	if f.Paragraphs != nil && paragraphs(lines) > *f.Paragraphs {
+	if f.Paragraphs != nil && paragraphs(lines, code) > *f.Paragraphs {
 		add(FormParagraphs)
 	}
 	if f.Refs == "deny" && refRe.MatchString(body) {
@@ -69,9 +70,9 @@ func Form(c place.Comment, f *config.Form, disp map[string]string, spec scan.Lan
 }
 
 // hasHeading は、見出しの行があるかを見る。コードブロックの中の「#」は見出しではない。
-func hasHeading(lines []string) bool {
-	for _, line := range lines {
-		if !scan.IsCodeLine(line) && headingRe.MatchString(line) {
+func hasHeading(lines []string, code []bool) bool {
+	for i, line := range lines {
+		if !code[i] && headingRe.MatchString(line) {
 			return true
 		}
 	}
@@ -94,17 +95,17 @@ func startsWithDecl(body, decl string) bool {
 }
 
 // paragraphs は、空行で区切られた塊のうち、散文の段落の数を数える。
-// 字下げされたコードブロックは散文ではないので数えず、箇条書きは散文として数える。
-func paragraphs(lines []string) int {
+// コードブロックは散文ではないので数えず、箇条書きは散文として数える。
+func paragraphs(lines []string, code []bool) int {
 	n := 0
 	counted := false
 
-	for _, line := range lines {
+	for i, line := range lines {
 		if strings.TrimSpace(line) == "" {
 			counted = false
 			continue
 		}
-		if !counted && !scan.IsCodeLine(line) {
+		if !counted && !code[i] {
 			counted = true
 			n++
 		}

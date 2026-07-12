@@ -29,7 +29,13 @@ func templateForm() *config.Form {
 func form(t *testing.T, src string, f *config.Form) []string {
 	t.Helper()
 
-	spec := scan.GoSpec()
+	return formWith(t, src, f, scan.GoSpec())
+}
+
+// formWith は、言語を指定して doc コメントを検査する。
+func formWith(t *testing.T, src string, f *config.Form, spec scan.LangSpec) []string {
+	t.Helper()
+
 	allows := []config.Allow{{Place: "header"}, {Place: "doc", Form: f}, {Place: "trailing", Form: f}}
 
 	var out []string
@@ -184,6 +190,89 @@ func TestFormParagraphsCountsProseOnly(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := form(t, tt.src, templateForm())
+			if strings.Join(got, ", ") != strings.Join(tt.want, ", ") {
+				t.Errorf("違反 = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestFormFencedCodeBlock は、doc が Markdown の言語（Rust / TypeScript）で、フェンスで囲んだ
+// コードブロックを散文と数えないことを確かめる。Rust / TS の doc はコード例をフェンスで書くので、
+// 数えると出力例を置いただけで誤爆する。Go の doc は Markdown ではないので、フェンスは器にならない。
+func TestFormFencedCodeBlock(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		spec scan.LangSpec
+		want []string
+	}{
+		{
+			name: "Rust: フェンスの中は段落と数えない（コード例を doc に置ける）",
+			src: "/// f は変換する。\n" +
+				"///\n" +
+				"/// ```\n" +
+				"/// let x = f(1);\n" +
+				"///\n" +
+				"/// assert_eq!(x, 2);\n" +
+				"/// ```\n" +
+				"pub fn f() {}\n",
+			spec: scan.RustSpec(),
+		},
+		{
+			name: "Rust: フェンスの中の # は見出しではない",
+			src: "/// f は変換する。\n" +
+				"///\n" +
+				"/// ```\n" +
+				"/// # let x = 1;\n" +
+				"/// ```\n" +
+				"pub fn f() {}\n",
+			spec: scan.RustSpec(),
+		},
+		{
+			name: "Rust: フェンスを閉じ直せば、そのあとの散文は数える（囲んで隠せない）",
+			src: "/// f は変換する。\n" +
+				"///\n" +
+				"/// ```\n" +
+				"/// let x = f(1);\n" +
+				"/// ```\n" +
+				"///\n" +
+				"/// もともとは同期だった。\n" +
+				"pub fn f() {}\n",
+			spec: scan.RustSpec(),
+			want: []string{"form-paragraphs 1"},
+		},
+		{
+			name: "TypeScript: JSDoc のフェンスの中は段落と数えない",
+			src: "/**\n" +
+				" * f は変換する。\n" +
+				" *\n" +
+				" * ```ts\n" +
+				" * const x = f(1);\n" +
+				" *\n" +
+				" * console.log(x);\n" +
+				" * ```\n" +
+				" */\n" +
+				"export function f() {}\n",
+			spec: scan.TSSpec(),
+		},
+		{
+			name: "Go: フェンスは器と認めない（doc は Markdown ではなく、認めれば背景の逃げ場になる）",
+			src: "package p\n\n" +
+				"// Text は、人間向けの出力を書く。\n" +
+				"//\n" +
+				"// ```\n" +
+				"// もともとは JSON だけだった。\n" +
+				"// ```\n" +
+				"func Text() {}\n",
+			spec: scan.GoSpec(),
+			want: []string{"form-paragraphs 3"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formWith(t, tt.src, templateForm(), tt.spec)
 			if strings.Join(got, ", ") != strings.Join(tt.want, ", ") {
 				t.Errorf("違反 = %v, want %v", got, tt.want)
 			}

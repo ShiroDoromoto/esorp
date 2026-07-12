@@ -36,7 +36,7 @@ func Body(text string, spec LangSpec) string {
 }
 
 // BodyLines は、コメント記号だけを剥がし、行頭の字下げを残した本文の行を返す。
-// 字下げを落とす Body では、doc のコードブロックと散文を見分けられない（→ IsCodeLine）。
+// 字下げを落とす Body では、doc のコードブロックと散文を見分けられない（→ CodeLines）。
 func BodyLines(text string, spec LangSpec) []string {
 	openers := commentOpeners(spec)
 
@@ -71,10 +71,12 @@ func BodyLines(text string, spec LangSpec) []string {
 // 見える。継ぎ目に空白を挟むかは両側の文字で決め、両側とも東アジアの全角なら挟まない（日本語の
 // 折り返しは空白を伴わないので、「かつ\nて」は「かつて」に戻る）。空行は段落の区切りとして残り、
 // 畳んだ段落を隔てる改行になる。受けるのは字下げを残した行（BodyLines）で、畳むのは散文だけ。doc の
-// コードブロックの行（IsCodeLine）はそのまま置き、前後の散文とも地続きにしない。コードは折り返された
+// コードブロックの行（CodeLines）はそのまま置き、前後の散文とも地続きにしない。コードは折り返された
 // 散文ではないので、つないでも意味のある文にはならず、ルールがコードの行をまたいで当たるだけになる。
 // 呼ぶのは照合の直前だけで、baseline のキーが見る本文は Body のままなので、既存のキーは動かない。
-func Unwrap(lines []string) string {
+func Unwrap(lines []string, spec LangSpec) string {
+	code := CodeLines(lines, spec)
+
 	var out []string
 	var b strings.Builder
 	flush := func() {
@@ -84,12 +86,12 @@ func Unwrap(lines []string) string {
 		}
 	}
 
-	for _, line := range lines {
+	for i, line := range lines {
 		if line == "" {
 			flush()
 			continue
 		}
-		if IsCodeLine(line) {
+		if code[i] {
 			flush()
 			out = append(out, line)
 			continue
@@ -135,9 +137,36 @@ func firstRune(s string) rune {
 	return r
 }
 
-// IsCodeLine は、doc の中のコードブロックの行であることを表す。見分けるのはタブだけ。
-func IsCodeLine(line string) bool {
-	return strings.HasPrefix(line, "\t")
+// CodeLines は、doc の中のコードブロックの行に印を付ける。印の付いた行は、層1 では段落に数えず、
+// 層2 では畳まない。行だけを見て分かるのはタブの字下げまでで、フェンス（```）は開きと閉じの間という
+// 状態を持つので、本文を行の並びで見る。フェンスの行そのものも散文ではないので、コードブロックに
+// 含める。閉じないまま終わったフェンスは、本文の終わりまでをコードブロックとする（Markdown と同じ）。
+// フェンスを器と認めるのは、doc が Markdown の言語（spec.DocFences）だけ。Go の doc は Markdown では
+// なく、コードブロックはタブの字下げで書くので、Go でフェンスを認めても誤爆は1つも減らず、背景を
+// 囲って隠す逃げ場が増えるだけになる。
+func CodeLines(lines []string, spec LangSpec) []bool {
+	code := make([]bool, len(lines))
+	inFence := false
+
+	for i, line := range lines {
+		switch {
+		case spec.DocFences && isFence(line):
+			code[i] = true
+			inFence = !inFence
+		case inFence:
+			code[i] = true
+		default:
+			code[i] = strings.HasPrefix(line, "\t")
+		}
+	}
+	return code
+}
+
+// isFence は、コードブロックを開閉するフェンスの行であることを表す。見分けるのはバッククォート3つ
+// だけで、チルダ（~~~）は見ない。Rust / TypeScript の doc がコード例に使うのはバッククォートであり、
+// 認める形を増やすほど、散文を囲って隠せる形が増える。
+func isFence(line string) bool {
+	return strings.HasPrefix(strings.TrimLeft(line, " \t"), "```")
 }
 
 // commentOpeners は、剥がすべきコメント記号を長い順に返す。/// は // を接頭辞に含む。

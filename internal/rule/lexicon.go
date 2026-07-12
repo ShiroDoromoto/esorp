@@ -26,7 +26,7 @@ type Target struct {
 // （scan.Unwrap）で、ルールの書き手は句が折り返される心配をせずに「no longer」と書ける。畳むのは
 // 散文だけなので、doc のコードブロックの中で当たることはあっても、その行をまたぐことはない。
 func Lexicon(c place.Comment, rules []config.Rule, t Target, spec scan.LangSpec) []Violation {
-	body := scan.Unwrap(scan.BodyLines(c.Text, spec))
+	body := scan.Unwrap(scan.BodyLines(c.Text, spec), spec)
 
 	var out []Violation
 	for _, r := range rules {

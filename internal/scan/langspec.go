@@ -84,6 +84,10 @@ type LangSpec struct {
 	// DocInner は、doc 記法のうち、次の宣言ではなく、それを囲むものを説明するもの（Rust の //! /*!）。
 	DocInner []string
 
+	// DocFences は、doc が Markdown であり、コードブロックをフェンス（```）で囲むか。Go の doc は
+	// Markdown ではなく、コードブロックはタブの字下げで書くので、持たない。
+	DocFences bool
+
 	// DeclKeywords は宣言を開始するキーワード。
 	DeclKeywords []string
 
@@ -148,6 +152,7 @@ func RustSpec() LangSpec {
 		DocLine:     []string{"///", "//!"},
 		DocBlock:    []string{"/**", "/*!"},
 		DocInner:    []string{"//!", "/*!"},
+		DocFences:   true,
 		Strings: []StringSpec{
 			{Open: `br"`, Close: `"`, Multiline: true, Hashes: true},
 			{Open: `r"`, Close: `"`, Multiline: true, Hashes: true},
@@ -173,6 +178,7 @@ func TSSpec() LangSpec {
 		BlockNests:  false,
 		Regex:       true,
 		DocBlock:    []string{"/**"},
+		DocFences:   true,
 		Strings: []StringSpec{
 			{Open: `"`, Close: `"`, Escape: true},
 			{Open: "'", Close: "'", Escape: true},

@@ -1,6 +1,9 @@
 package scan
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestBody(t *testing.T) {
 	tests := []struct {
@@ -53,7 +56,7 @@ func TestUnwrap(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := Unwrap(tt.lines); got != tt.want {
+			if got := Unwrap(tt.lines, GoSpec()); got != tt.want {
 				t.Errorf("Unwrap(%q) = %q, want %q", tt.lines, got, tt.want)
 			}
 		})
@@ -63,7 +66,7 @@ func TestUnwrap(t *testing.T) {
 // TestUnwrapKeepsParagraphsApart は、畳んだ段落どうしが地続きにならないことを見る。地続きにすると、
 // 段落をまたいだ句に当たってしまう。
 func TestUnwrapKeepsParagraphsApart(t *testing.T) {
-	if got := Unwrap(BodyLines("// no\n//\n// longer", GoSpec())); got != "no\nlonger" {
+	if got := Unwrap(BodyLines("// no\n//\n// longer", GoSpec()), GoSpec()); got != "no\nlonger" {
 		t.Errorf("Unwrap = %q, want %q", got, "no\nlonger")
 	}
 }
@@ -73,7 +76,58 @@ func TestUnwrapKeepsParagraphsApart(t *testing.T) {
 func TestUnwrapKeepsCodeBlockLines(t *testing.T) {
 	text := "// F は変換する。\n//\n//\tif x == nil {\n//\t\treturn\n//\t}\n//\n// 呼ぶ側は\n// 気にしない。"
 	want := "F は変換する。\n\tif x == nil {\n\t\treturn\n\t}\n呼ぶ側は気にしない。"
-	if got := Unwrap(BodyLines(text, GoSpec())); got != want {
+	if got := Unwrap(BodyLines(text, GoSpec()), GoSpec()); got != want {
 		t.Errorf("Unwrap = %q, want %q", got, want)
+	}
+}
+
+// TestCodeLines は、コードブロックの行の見分けを確かめる。行ごとに独立して見分けられるのはタブの
+// 字下げだけで、フェンスは開きと閉じの間という状態を持つ。
+func TestCodeLines(t *testing.T) {
+	tests := []struct {
+		name  string
+		lines []string
+		spec  LangSpec
+		want  []bool
+	}{
+		{
+			"タブの字下げはコードブロック",
+			[]string{"f は変換する。", "", "\tlet x = 1;"},
+			GoSpec(),
+			[]bool{false, false, true},
+		},
+		{
+			"フェンスは、その行も含めてコードブロック",
+			[]string{"f は変換する。", "```", "let x = 1;", "```", "呼ぶ側は気にしない。"},
+			RustSpec(),
+			[]bool{false, true, true, true, false},
+		},
+		{
+			"フェンスに言語を添えても開きと読む",
+			[]string{"```ts", "const x = 1;", "```"},
+			TSSpec(),
+			[]bool{true, true, true},
+		},
+		{
+			"閉じないフェンスは、本文の終わりまでコードブロック",
+			[]string{"f は変換する。", "```", "let x = 1;"},
+			RustSpec(),
+			[]bool{false, true, true},
+		},
+		{
+			"doc が Markdown でない言語（Go）では、フェンスは器にならない",
+			[]string{"Text は出力を書く。", "```", "もともとは JSON だけだった。", "```"},
+			GoSpec(),
+			[]bool{false, false, false, false},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CodeLines(tt.lines, tt.spec)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("CodeLines(%q) = %v, want %v", tt.lines, got, tt.want)
+			}
+		})
 	}
 }

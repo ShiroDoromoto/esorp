@@ -23,7 +23,13 @@ func rules(t *testing.T, rs ...config.Rule) []config.Rule {
 func lexicon(t *testing.T, src string, rs []config.Rule, target Target) []Violation {
 	t.Helper()
 
-	spec := scan.GoSpec()
+	return lexiconWith(t, src, rs, target, scan.GoSpec())
+}
+
+// lexiconWith は、言語を指定して全コメントをルールに照らす。
+func lexiconWith(t *testing.T, src string, rs []config.Rule, target Target, spec scan.LangSpec) []Violation {
+	t.Helper()
+
 	var out []Violation
 	for _, c := range place.Classify(scan.CStyle([]byte(src), spec), spec) {
 		out = append(out, Lexicon(c, rs, target, spec)...)
@@ -150,6 +156,46 @@ func TestLexiconWrapped(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := lexicon(t, tt.src, history(t), Target{Syntax: "cstyle", Path: "a.go"})
+			if len(got) != tt.want {
+				t.Errorf("違反 = %d 件, want %d\n%#v", len(got), tt.want, got)
+			}
+		})
+	}
+}
+
+// TestLexiconFencedCodeBlock は、フェンスで囲んだコードブロックの行を畳まないことを見る。Rust / TS の
+// doc はコード例をフェンスで書くので、畳むとコードの行どうしがつながり、ルールが行をまたいで当たる。
+// 行の中では今までどおり当たる（コードブロックを層2 の対象から外しはしない）。
+func TestLexiconFencedCodeBlock(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		spec scan.LangSpec
+		want int
+	}{
+		{
+			"Rust: フェンスの中の行をまたいだつながりには当たらない",
+			"/// f は変換する。\n///\n/// ```\n/// let x = no\n/// longer(x);\n/// ```\npub fn f() {}\n",
+			scan.RustSpec(),
+			0,
+		},
+		{
+			"Rust: フェンスの中でも、1行に収まった句には当たる",
+			"/// f は変換する。\n///\n/// ```\n/// // f は no longer 使わない\n/// ```\npub fn f() {}\n",
+			scan.RustSpec(),
+			1,
+		},
+		{
+			"TypeScript: JSDoc のフェンスの中の行をまたいだつながりにも当たらない",
+			"/**\n * f は変換する。\n *\n * ```ts\n * const x = no\n * longer(x);\n * ```\n */\nexport function f() {}\n",
+			scan.TSSpec(),
+			0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := lexiconWith(t, tt.src, history(t), Target{Syntax: "cstyle", Path: "a.rs"}, tt.spec)
 			if len(got) != tt.want {
 				t.Errorf("違反 = %d 件, want %d\n%#v", len(got), tt.want, got)
 			}
