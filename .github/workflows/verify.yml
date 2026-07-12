@@ -14,6 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # wharfy は git のタグから版を決める。タグが無いと、確かめる先が
+          # 決まらず全チャネルを飛ばす。
+          fetch-depth: 0
 
       - name: wharfy を入れる
         run: |
