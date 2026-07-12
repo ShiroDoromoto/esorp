@@ -14,9 +14,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/bmatcuk/doublestar/v4"
 	"github.com/goccy/go-yaml"
 
+	"github.com/ShiroDoromoto/esorp/internal/glob"
 	"github.com/ShiroDoromoto/esorp/internal/place"
 	"github.com/ShiroDoromoto/esorp/internal/scan"
 )
@@ -95,7 +95,7 @@ type Form struct {
 	URLs string `yaml:"urls"`
 }
 
-// Rule は層2（語彙）のルール。v0 では読み込んで検証するだけで、効かせるのは後続。
+// Rule は層2（語彙）のルール。プロジェクトが自分で足すものであり、ツールは既定を持たない。
 type Rule struct {
 	ID      string `yaml:"id"`
 	Pattern string `yaml:"pattern"`
@@ -171,6 +171,8 @@ func (c *Config) validate() []string {
 			add("%s.id: 必須です", at)
 		case seen[r.ID]:
 			add("%s.id: %q が重複しています", at, r.ID)
+		case slices.Contains(knownViolations, r.ID):
+			add("%s.id: %q は層1 の違反 id です。baseline も disposition も id で引くので、重ねられません", at, r.ID)
 		default:
 			seen[r.ID] = true
 		}
@@ -193,6 +195,9 @@ func (c *Config) validate() []string {
 			if _, ok := scan.ParseKind(k); !ok {
 				add("%s.where.kind: %q は不明な kind です", at, k)
 			}
+		}
+		if len(r.Where.Path) > 0 {
+			validateGlobs(at+".where.path", r.Where.Path, add)
 		}
 	}
 
@@ -232,29 +237,33 @@ func validateSyntax(name string, s Syntax, add func(string, ...any)) {
 	}
 }
 
-// validateFiles は files: の glob を検める。「!」始まりは除外。不正な glob はどのパスにも当たらない
-// ので、通してしまうと、そのファイル群は検査されないまま適合したように見える。除外だけを並べた
-// files: も同じ（何も拾わない）。
+// validateFiles は files: の glob を検める。
 func validateFiles(at string, files []string, add func(string, ...any)) {
 	if len(files) == 0 {
 		add("%s.files: 必須です（このファミリのスキャナで読むファイルの glob）", at)
 		return
 	}
+	validateGlobs(at+".files", files, add)
+}
 
+// validateGlobs は、パスを絞る glob の並びを検める（syntax.files: と rules[].where.path: が通る）。
+// 「!」始まりは除外。不正な glob はどのパスにも当たらないので、通してしまうと、そのファイル群は
+// 検査されないまま適合したように見える。除外だけを並べた並びも同じ（何も選ばない）。
+func validateGlobs(at string, globs []string, add func(string, ...any)) {
 	positives := 0
-	for i, g := range files {
+	for i, g := range globs {
 		pat, excluded := strings.CutPrefix(g, "!")
 		switch {
 		case pat == "":
-			add("%s.files[%d]: 空の glob です", at, i)
-		case !doublestar.ValidatePattern(pat):
-			add("%s.files[%d]: %q は glob として不正です", at, i, g)
+			add("%s[%d]: 空の glob です", at, i)
+		case !glob.Valid(pat):
+			add("%s[%d]: %q は glob として不正です", at, i, g)
 		case !excluded:
 			positives++
 		}
 	}
 	if positives == 0 {
-		add("%s.files: 除外（! 始まり）だけでは、どのファイルにも当たりません", at)
+		add(`%s: 除外（! 始まり）だけでは、どのファイルにも当たりません（全体から除くなら "**" を併せて書きます）`, at)
 	}
 }
 
@@ -314,8 +323,17 @@ func (a Allow) PlaceValue() place.Place {
 }
 
 func (a Allow) KindValues() []scan.Kind {
+	return kindValues(a.Kind)
+}
+
+// KindValues は、ルールの where.kind を値にする。
+func (w Where) KindValues() []scan.Kind {
+	return kindValues(w.Kind)
+}
+
+func kindValues(kinds []string) []scan.Kind {
 	var out []scan.Kind
-	for _, k := range a.Kind {
+	for _, k := range kinds {
 		v, _ := scan.ParseKind(k)
 		out = append(out, v)
 	}

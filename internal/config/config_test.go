@@ -176,6 +176,21 @@ func TestLoadErrors(t *testing.T) {
 			want: "syntax: に無い名前",
 		},
 		{
+			name: "rules の id が層1 の違反 id と衝突",
+			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nrules:\n  - id: form-refs\n    pattern: a\n    message: x\n",
+			want: "層1 の違反 id",
+		},
+		{
+			name: "where.path の glob が不正",
+			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nrules:\n  - id: r\n    pattern: a\n    message: x\n    where:\n      path: [\"src/[.go\"]\n",
+			want: "glob として不正",
+		},
+		{
+			name: "where.path が除外だけでは何にも当たらない",
+			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nrules:\n  - id: r\n    pattern: a\n    message: x\n    where:\n      path: [\"!vendor/**\"]\n",
+			want: "除外",
+		},
+		{
 			name: "disposition の違反 id が不明",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\ndisposition:\n  place-not-allowd: x\n",
 			want: "不明な違反 id",

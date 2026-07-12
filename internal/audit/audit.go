@@ -14,10 +14,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/bmatcuk/doublestar/v4"
-
 	"github.com/ShiroDoromoto/esorp/internal/baseline"
 	"github.com/ShiroDoromoto/esorp/internal/config"
+	"github.com/ShiroDoromoto/esorp/internal/glob"
 	"github.com/ShiroDoromoto/esorp/internal/place"
 	"github.com/ShiroDoromoto/esorp/internal/rule"
 	"github.com/ShiroDoromoto/esorp/internal/scan"
@@ -175,7 +174,7 @@ func collect(cfg *config.Config, root string, sel Selection) ([]matched, error) 
 		}
 
 		for _, name := range names {
-			if selects(cfg.Syntax[name].Files, rel) {
+			if glob.Selects(cfg.Syntax[name].Files, rel) {
 				out = append(out, matched{path: rel, syntax: name})
 				break
 			}
@@ -188,52 +187,20 @@ func collect(cfg *config.Config, root string, sel Selection) ([]matched, error) 
 	return out, nil
 }
 
-// selects は、glob の並びがそのパスを選ぶかを見る。「!」始まりは除外であり、正の glob に当たって
-// いても除外に当たれば落とす（vendor/ や node_modules/ のように、自分のコードでないものを外す）。
-// 除外がいつも勝つので、並べる順は結果を変えない。
-func selects(globs []string, path string) bool {
-	hit := false
-	for _, g := range globs {
-		if pat, ok := strings.CutPrefix(g, "!"); ok {
-			if match(pat, path) {
-				return false
-			}
-			continue
-		}
-		hit = hit || match(g, path)
-	}
-	return hit
-}
-
 // excludedEverywhere は、どの syntax エントリからも除外されているディレクトリであることを見る
 // （node_modules/** は node_modules そのものにも当たる）。そこはもう誰も読まないので、降りない。
 // 1つでも除外していないエントリがあれば降りる。走査を速くするための判断であって、拾うものを
 // 変えてはならない。
 func excludedEverywhere(cfg *config.Config, names []string, dir string) bool {
 	for _, name := range names {
-		excluded := false
-		for _, g := range cfg.Syntax[name].Files {
-			if pat, ok := strings.CutPrefix(g, "!"); ok && match(pat, dir) {
-				excluded = true
-				break
-			}
-		}
-		if !excluded {
+		if !glob.Excluded(cfg.Syntax[name].Files, dir) {
 			return false
 		}
 	}
 	return true
 }
 
-// match は glob 1つの照合。** を含む照合は doublestar に任せる。glob が不正でないことは、設定を
-// 読んだ時点で確かめてある。
-func match(glob, path string) bool {
-	ok, err := doublestar.Match(glob, path)
-	return err == nil && ok
-}
-
-// auditFile は、ファイル1つを読み、器 → 書式 の順に検査して違反を Result に足す（mode:
-// content-only は器を問わないので、層2 が入るまで見るものが無い）。同じ本文の同じ違反が1つの
+// auditFile は、ファイル1つを読み、検査して違反を Result に足す。同じ本文の同じ違反が1つの
 // ファイルに何度も現れる（型の全フィールドに付いた同じ行末コメントなど）ため、baseline のキーは
 // 出現順で区別する。sel で落ちるコメントも照合までは回し、出現順だけ進めて報告しない。ここを
 // 飛ばすと、同じ違反のキーが check と check --diff で食い違い、baseline が効かなくなる。
@@ -258,10 +225,6 @@ func auditFile(cfg *config.Config, root string, m matched, sel Selection, res *R
 		}
 	}
 
-	if syn.Mode != "structural" {
-		return nil
-	}
-
 	occurrence := map[string]int{}
 	add := func(c place.Comment, v rule.Violation) {
 		body := scan.Body(c.Text, spec)
@@ -274,15 +237,30 @@ func auditFile(cfg *config.Config, root string, m matched, sel Selection, res *R
 		res.Findings = append(res.Findings, Finding{Path: m.path, Syntax: m.syntax, Key: key, Violation: v})
 	}
 
+	target := rule.Target{Syntax: m.syntax, Path: m.path}
 	for _, c := range comments {
-		a, v := rule.Vessel(c, syn.Allow, cfg.Disposition, spec)
-		if v != nil {
-			add(c, *v)
-			continue
-		}
-		for _, fv := range rule.Form(c, a.Form, cfg.Disposition, spec) {
-			add(c, fv)
+		for _, v := range evaluate(c, syn, cfg, target, spec) {
+			add(c, v)
 		}
 	}
 	return nil
+}
+
+// evaluate は、コメント1つを 器 → 書式 → 語彙 の順に検査する。先に落ちたら後は見ない。置き場所や
+// 形が違うコメントに、語彙の違反まで重ねて出してもノイズにしかならない（直す順序も、器 → 形 →
+// 語彙 でしかない）。mode: content-only は器の概念を持たないファイル向けなので、層1 を飛ばして
+// 語彙だけを見る。
+func evaluate(c place.Comment, syn config.Syntax, cfg *config.Config, t rule.Target, spec scan.LangSpec) []rule.Violation {
+	if syn.Mode != "structural" {
+		return rule.Lexicon(c, cfg.Rules, t, spec)
+	}
+
+	a, v := rule.Vessel(c, syn.Allow, cfg.Disposition, spec)
+	if v != nil {
+		return []rule.Violation{*v}
+	}
+	if fv := rule.Form(c, a.Form, cfg.Disposition, spec); len(fv) > 0 {
+		return fv
+	}
+	return rule.Lexicon(c, cfg.Rules, t, spec)
 }
