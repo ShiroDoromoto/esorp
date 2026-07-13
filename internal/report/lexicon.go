@@ -14,7 +14,7 @@ import (
 func TryText(w io.Writer, t *audit.Trial) error {
 	var b strings.Builder
 	for _, h := range t.Hits {
-		fmt.Fprintf(&b, "%s:%d:%d  place=%s kind=%s\n", h.Path, h.Line, h.Col, h.Place, h.Kind)
+		fmt.Fprintf(&b, "%s:%d:%d  place=%s kind=%s%s\n", h.Path, h.Line, h.Col, h.Place, h.Kind, seamMark(h.SeamDependent))
 		indent(&b, h.Text)
 		b.WriteByte('\n')
 	}
@@ -25,6 +25,15 @@ func TryText(w io.Writer, t *audit.Trial) error {
 
 	_, err := io.WriteString(w, b.String())
 	return err
+}
+
+// seamMark は、折り返しの継ぎ目に左右される当たりに添える印（→ SeamNote）。当たりの見出しに出す
+// のは、その1件だけの話だから——測っている最中に、どの当たりが継ぎ目のせいかを見分けられる。
+func seamMark(dependent bool) string {
+	if !dependent {
+		return ""
+	}
+	return "  seam=dependent"
 }
 
 // share は、当たりが全コメントに占める割合。母集団が空なら書かない。
@@ -50,15 +59,17 @@ type jsonTrialSum struct {
 }
 
 // jsonTrialHit の body は照合に使った本文（折り返しを畳んだもの）。text（原文）だけでは、句が行を
-// またいで当たったときに、なぜ当たったのかが読み取れない。
+// またいで当たったときに、なぜ当たったのかが読み取れない。seam_dependent は、その当たりが折り返しの
+// 継ぎ目に左右されること（立ったときだけ出す）。
 type jsonTrialHit struct {
-	Path  string `json:"path"`
-	Line  int    `json:"line"`
-	Col   int    `json:"col"`
-	Place string `json:"place"`
-	Kind  string `json:"kind"`
-	Text  string `json:"text"`
-	Body  string `json:"body"`
+	Path          string `json:"path"`
+	Line          int    `json:"line"`
+	Col           int    `json:"col"`
+	Place         string `json:"place"`
+	Kind          string `json:"kind"`
+	Text          string `json:"text"`
+	Body          string `json:"body"`
+	SeamDependent bool   `json:"seam_dependent,omitempty"`
 }
 
 // TryJSON は、候補パターンの当たりを機械可読で書く。
@@ -75,13 +86,14 @@ func TryJSON(w io.Writer, t *audit.Trial) error {
 	}
 	for _, h := range t.Hits {
 		out.Hits = append(out.Hits, jsonTrialHit{
-			Path:  h.Path,
-			Line:  h.Line,
-			Col:   h.Col,
-			Place: h.Place.String(),
-			Kind:  h.Kind.String(),
-			Text:  h.Text,
-			Body:  h.Body,
+			Path:          h.Path,
+			Line:          h.Line,
+			Col:           h.Col,
+			Place:         h.Place.String(),
+			Kind:          h.Kind.String(),
+			Text:          h.Text,
+			Body:          h.Body,
+			SeamDependent: h.SeamDependent,
 		})
 	}
 	return encode(w, out)

@@ -29,6 +29,9 @@ func Text(w io.Writer, res *audit.Result) error {
 		fmt.Fprintf(&b, "%s:%d:%d  %s  place=%s kind=%s\n", f.Path, f.Line, f.Col, f.ID, f.Place, f.Kind)
 		indent(&b, f.Text)
 		indent(&b, f.Message)
+		if f.SeamDependent {
+			indent(&b, SeamNote)
+		}
 		b.WriteByte('\n')
 	}
 	fmt.Fprintf(&b, "%d 件の違反（%d ファイル / %d コメント%s）\n", len(res.Findings), res.Files, res.Comments, baselined(res))
@@ -36,6 +39,13 @@ func Text(w io.Writer, res *audit.Result) error {
 	_, err := io.WriteString(w, b.String())
 	return err
 }
+
+// SeamNote は、折り返しの継ぎ目に左右される当たりに添える断り。当たった句が、半角と全角の境目で
+// 折り返された継ぎ目をまたいでいる。そこに原文の空白が在ったかは復元できないので、この当たりは
+// 折り返しが作ったものかもしれない——原文には直す箇所が無いかもしれない。黙って誤爆させないために、
+// 検知したうえで、そう告げる。
+const SeamNote = `この当たりは折り返しの継ぎ目に左右されます。半角と全角の境目で行が折り返されており、
+原文にそこの空白が在ったかは復元できません。原文に直す箇所が無ければ、baseline に載せてください。`
 
 // baselined は、baseline で抑えた件数を添える。抑えているものがあることを、必ず見える所に出す。
 func baselined(res *audit.Result) string {
@@ -91,15 +101,18 @@ type jsonSummary struct {
 	Baselined  int `json:"baselined"`
 }
 
+// jsonViolation の seam_dependent は、当たりが折り返しの継ぎ目に左右されること（→ SeamNote）。
+// 立たない方が普通なので、立ったときだけ出す。
 type jsonViolation struct {
-	Path    string `json:"path"`
-	Line    int    `json:"line"`
-	Col     int    `json:"col"`
-	ID      string `json:"id"`
-	Place   string `json:"place"`
-	Kind    string `json:"kind"`
-	Text    string `json:"text"`
-	Message string `json:"message"`
+	Path          string `json:"path"`
+	Line          int    `json:"line"`
+	Col           int    `json:"col"`
+	ID            string `json:"id"`
+	Place         string `json:"place"`
+	Kind          string `json:"kind"`
+	Text          string `json:"text"`
+	Message       string `json:"message"`
+	SeamDependent bool   `json:"seam_dependent,omitempty"`
 }
 
 // JSON は、機械可読の出力を書く。violations と skipped は、空でも null でなく空配列にする。
@@ -146,14 +159,15 @@ func JSON(w io.Writer, res *audit.Result) error {
 // 拾った違反を、そのまま explain に渡せる）。
 func violation(f audit.Finding) jsonViolation {
 	return jsonViolation{
-		Path:    f.Path,
-		Line:    f.Line,
-		Col:     f.Col,
-		ID:      f.ID,
-		Place:   f.Place.String(),
-		Kind:    f.Kind.String(),
-		Text:    f.Text,
-		Message: strings.TrimRight(f.Message, "\n"),
+		Path:          f.Path,
+		Line:          f.Line,
+		Col:           f.Col,
+		ID:            f.ID,
+		Place:         f.Place.String(),
+		Kind:          f.Kind.String(),
+		Text:          f.Text,
+		Message:       strings.TrimRight(f.Message, "\n"),
+		SeamDependent: f.SeamDependent,
 	}
 }
 

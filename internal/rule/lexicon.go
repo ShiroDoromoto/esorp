@@ -24,22 +24,33 @@ type Target struct {
 // ので、設定に rules: が無ければ何も起きない。違反のメッセージは各ルールが持つ（disposition は層1 の
 // ためのもの）。ルールを並べた順に返す。呼ぶのは層1 を通ったコメントに対してだけで、置き場所や形が
 // 違うコメントに語彙の違反まで重ねて出しても、ノイズにしかならない。当てる本文は折り返しを畳んだもの
-// （scan.Unwrap）で、ルールの書き手は句が折り返される心配をせずに二語の句を書ける。畳むのは
-// 散文だけなので、doc のコードブロックの中で当たることはあっても、その行をまたぐことはない。
+// （scan.Unwrap）で、ルールの書き手は句が折り返される心配をせずに二語の句を書ける。畳むのは散文だけ
+// なので、doc のコードブロックの中で当たることはあっても、その行をまたぐことはない。半角と全角の
+// 境目の継ぎ目だけは原文の空白を復元できず、畳んだ本文が2通りになる（scan.Folded.Readings）ので、
+// どちらかで当たれば違反とする——通した違反は誰も拾わないが、検知は人の目に触れる。ただし片方でしか
+// 当たらない当たりは継ぎ目が作った可能性があるので、印を付けて報告する（SeamDependent）。検知に
+// 寄せたうえで、黙って誤爆させない。
 func Lexicon(c place.Comment, rules []config.Rule, t Target, spec scan.LangSpec) []Violation {
-	body := scan.Unwrap(scan.BodyLines(c.Text, spec), spec)
+	readings := scan.Unwrap(scan.BodyLines(c.Text, spec), spec).Readings()
 
 	var out []Violation
 	for i, r := range rules {
 		if !applies(r, c, t) {
 			continue
 		}
-		if !r.Regexp.MatchString(body) {
+		hits := 0
+		for _, body := range readings {
+			if r.Regexp.MatchString(body) {
+				hits++
+			}
+		}
+		if hits == 0 {
 			continue
 		}
 		site := Site{Path: fmt.Sprintf("rules[%d]", i), Allow: -1, Rule: i}
 		v := violation(r.ID, site, c, nil)
 		v.Message = r.Message
+		v.SeamDependent = hits < len(readings)
 		out = append(out, *v)
 	}
 	return out

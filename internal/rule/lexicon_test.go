@@ -219,3 +219,48 @@ func TestLexiconSite(t *testing.T) {
 		t.Errorf("当たったルールを指していない: %#v", s)
 	}
 }
+
+// TestLexiconSeamDependentHit は、半角と全角の境目で折り返された句の当たりに、継ぎ目に左右される印が
+// 付くことを見る。原文は「v2以前は」で、そこに直す箇所は無い。畳む側が作った空白で当たっているので、
+// 黙って違反を出せば、書き手は直しようがない。
+func TestLexiconSeamDependentHit(t *testing.T) {
+	rs := rules(t, config.Rule{ID: "no-history", Pattern: `(^|[\s。、])以前は`})
+	src := "package p\n\n// F は互換の境界を持つ。v2\n// 以前は無視する。\nfunc F() {}\n"
+
+	got := lexicon(t, src, rs, Target{Syntax: "cstyle", Path: "a.go"})
+	if len(got) != 1 {
+		t.Fatalf("違反 = %d 件, want 1（検知には寄せる）\n%#v", len(got), got)
+	}
+	if !got[0].SeamDependent {
+		t.Error("SeamDependent = false, want true（継ぎ目が作った空白で当たっている）")
+	}
+}
+
+// TestLexiconHitAcrossSeamOnlyWithoutSpace は、空白を挟まない読みでしか当たらない句も拾うことを見る。
+// 挟む側にだけ賭けていたときは、これを黙って取りこぼしていた。
+func TestLexiconHitAcrossSeamOnlyWithoutSpace(t *testing.T) {
+	rs := rules(t, config.Rule{ID: "no-flag", Pattern: "`--diff`を"})
+	src := "package p\n\n// F は `--diff`\n// を見る。\nfunc F() {}\n"
+
+	got := lexicon(t, src, rs, Target{Syntax: "cstyle", Path: "a.go"})
+	if len(got) != 1 {
+		t.Fatalf("違反 = %d 件, want 1\n%#v", len(got), got)
+	}
+	if !got[0].SeamDependent {
+		t.Error("SeamDependent = false, want true")
+	}
+}
+
+// TestLexiconCertainHitIsNotSeamDependent は、継ぎ目に左右されない当たりに印が付かないことを見る。
+// 印が濫発すれば、印そのものが読み飛ばされる。
+func TestLexiconCertainHitIsNotSeamDependent(t *testing.T) {
+	src := "package p\n\n// F はかつ\n// て同期だった。\nfunc F() {}\n"
+
+	got := lexicon(t, src, history(t), Target{Syntax: "cstyle", Path: "a.go"})
+	if len(got) != 1 {
+		t.Fatalf("違反 = %d 件, want 1\n%#v", len(got), got)
+	}
+	if got[0].SeamDependent {
+		t.Error("SeamDependent = true, want false（全角どうしの継ぎ目に賭けは無い）")
+	}
+}

@@ -84,6 +84,35 @@ func BodyLines(text string, spec LangSpec) []string {
 	return lines
 }
 
+// Folded は、折り返しを畳んだ本文と、そのうち賭けで空白を挟んだ継ぎ目。
+type Folded struct {
+	// Text は、継ぎ目に空白を挟んだ読み。
+	Text string
+
+	// Uncertain は、原文に空白が在ったかを復元できない継ぎ目の位置（Text の中の、挟んだ空白の
+	// byte offset）。半角と全角の境目がこれになる。
+	Uncertain []int
+}
+
+// Readings は、照合に当てる本文を返す。不確かな継ぎ目が無ければ1つ。在れば、そこに空白を挟んだ読みと、
+// 挟まない読みの2つ。どちらが原文だったかは折り返した時点で失われているので、当てる側は両方を見て、
+// 片方でしか当たらない当たりを「継ぎ目に依存する」と告げられる。
+func (f Folded) Readings() []string {
+	if len(f.Uncertain) == 0 {
+		return []string{f.Text}
+	}
+
+	var b strings.Builder
+	b.Grow(len(f.Text))
+	prev := 0
+	for _, at := range f.Uncertain {
+		b.WriteString(f.Text[prev:at])
+		prev = at + 1
+	}
+	b.WriteString(f.Text[prev:])
+	return []string{f.Text, b.String()}
+}
+
 // Unwrap は、折り返しで途切れた本文を、段落ごとに1行へ畳む。語彙のルール（層2）は正規表現を本文に
 // 当てるので、畳まないと二語の句が「no\nlonger」のように途切れて当たらず、検査したのに通ったように
 // 見える。継ぎ目に空白を挟むかは両側の文字で決め、両側とも東アジアの全角なら挟まない（日本語の
@@ -91,36 +120,47 @@ func BodyLines(text string, spec LangSpec) []string {
 // 畳んだ段落を隔てる改行になる。受けるのは字下げを残した行（BodyLines）で、畳むのは散文だけ。doc の
 // コードブロックの行（CodeLines）はそのまま置き、前後の散文とも地続きにしない。コードは折り返された
 // 散文ではないので、つないでも意味のある文にはならず、ルールがコードの行をまたいで当たるだけになる。
-// 呼ぶのは照合の直前だけで、baseline のキーが見る本文は Body のままなので、既存のキーは動かない。
-func Unwrap(lines []string, spec LangSpec) string {
+// 半角と全角の境目の継ぎ目だけは、空白を挟むかが賭けになる（「`--diff`」「を見る」は原文に空白が
+// 無く、「script は」「Common」には在る）。畳んだ本文は挟んだ側に倒したうえで、その位置を Uncertain
+// に残し、挟まない読みも取れるようにする。呼ぶのは照合の直前だけで、baseline のキーが見る本文は
+// Body のままなので、既存のキーは動かない。
+func Unwrap(lines []string, spec LangSpec) Folded {
 	code := CodeLines(lines, spec)
 
-	var out []string
-	var b strings.Builder
-	flush := func() {
-		if b.Len() > 0 {
-			out = append(out, b.String())
-			b.Reset()
+	var out strings.Builder
+	var uncertain []int
+	open := false
+
+	sep := func() {
+		if out.Len() > 0 {
+			out.WriteByte('\n')
 		}
 	}
 
 	for i, line := range lines {
-		if line == "" {
-			flush()
-			continue
+		switch {
+		case line == "":
+			open = false
+		case code[i]:
+			open = false
+			sep()
+			out.WriteString(line)
+		case !open:
+			sep()
+			out.WriteString(line)
+			open = true
+		default:
+			prev, next := lastRune(out.String()), firstRune(line)
+			if needsSpace(prev, next) {
+				if isWide(prev) != isWide(next) {
+					uncertain = append(uncertain, out.Len())
+				}
+				out.WriteByte(' ')
+			}
+			out.WriteString(line)
 		}
-		if code[i] {
-			flush()
-			out = append(out, line)
-			continue
-		}
-		if b.Len() > 0 && needsSpace(lastRune(b.String()), firstRune(line)) {
-			b.WriteString(" ")
-		}
-		b.WriteString(line)
 	}
-	flush()
-	return strings.Join(out, "\n")
+	return Folded{Text: out.String(), Uncertain: uncertain}
 }
 
 // needsSpace は、折り返しの継ぎ目に空白を挟むかを返す。両側とも全角のときだけ挟まない。

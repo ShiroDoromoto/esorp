@@ -115,7 +115,7 @@ func TestUnwrap(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := Unwrap(tt.lines, GoSpec()); got != tt.want {
+			if got := Unwrap(tt.lines, GoSpec()).Text; got != tt.want {
 				t.Errorf("Unwrap(%q) = %q, want %q", tt.lines, got, tt.want)
 			}
 		})
@@ -125,7 +125,7 @@ func TestUnwrap(t *testing.T) {
 // TestUnwrapKeepsParagraphsApart は、畳んだ段落どうしが地続きにならないことを見る。地続きにすると、
 // 段落をまたいだ句に当たってしまう。
 func TestUnwrapKeepsParagraphsApart(t *testing.T) {
-	if got := Unwrap(BodyLines("// no\n//\n// longer", GoSpec()), GoSpec()); got != "no\nlonger" {
+	if got := Unwrap(BodyLines("// no\n//\n// longer", GoSpec()), GoSpec()).Text; got != "no\nlonger" {
 		t.Errorf("Unwrap = %q, want %q", got, "no\nlonger")
 	}
 }
@@ -135,8 +135,47 @@ func TestUnwrapKeepsParagraphsApart(t *testing.T) {
 func TestUnwrapKeepsCodeBlockLines(t *testing.T) {
 	text := "// F は変換する。\n//\n//\tif x == nil {\n//\t\treturn\n//\t}\n//\n// 呼ぶ側は\n// 気にしない。"
 	want := "F は変換する。\n\tif x == nil {\n\t\treturn\n\t}\n呼ぶ側は気にしない。"
-	if got := Unwrap(BodyLines(text, GoSpec()), GoSpec()); got != want {
+	if got := Unwrap(BodyLines(text, GoSpec()), GoSpec()).Text; got != want {
 		t.Errorf("Unwrap = %q, want %q", got, want)
+	}
+}
+
+// TestUnwrapMarksUncertainSeams は、原文に空白が在ったかを復元できない継ぎ目——半角と全角の境目——
+// だけに印が付くことを見る。同じ幅どうしの継ぎ目は、空白の有無が折り返しから決まるので印を持たない。
+func TestUnwrapMarksUncertainSeams(t *testing.T) {
+	tests := []struct {
+		name  string
+		lines []string
+		want  int
+	}{
+		{"半角と全角の境目は不確か", []string{"互換の境界は v2", "以前は無視する。"}, 1},
+		{"全角と半角の境目も不確か", []string{"本文は", "Body が作る。"}, 1},
+		{"全角どうしは確か", []string{"F はかつ", "て同期だった。"}, 0},
+		{"半角どうしは確か", []string{"no", "longer."}, 0},
+		{"段落をまたいでも継ぎ目にはならない", []string{"境界は v2", "", "以前は無視する。"}, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := len(Unwrap(tt.lines, GoSpec()).Uncertain); got != tt.want {
+				t.Errorf("Unwrap(%q).Uncertain = %d 件, want %d 件", tt.lines, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestFoldedReadings は、不確かな継ぎ目が2つの読みを生むことを見る。継ぎ目に原文の空白が在ったかは
+// 折り返した時点で失われているので、どちらの読みが原文かは決められない。片方に賭ければ、賭けを外した
+// 側で黙って誤爆するか、黙って取りこぼす。
+func TestFoldedReadings(t *testing.T) {
+	got := Unwrap([]string{"互換の境界は v2", "以前は無視する。"}, GoSpec()).Readings()
+	want := []string{"互換の境界は v2 以前は無視する。", "互換の境界は v2以前は無視する。"}
+	if !slices.Equal(got, want) {
+		t.Errorf("Readings = %q, want %q", got, want)
+	}
+
+	if got := Unwrap([]string{"no", "longer."}, GoSpec()).Readings(); !slices.Equal(got, []string{"no longer."}) {
+		t.Errorf("確かな継ぎ目だけなら読みは1つ: Readings = %q", got)
 	}
 }
 
