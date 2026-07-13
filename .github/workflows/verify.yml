@@ -70,3 +70,146 @@ jobs:
         with:
           version: ${{ steps.tag.outputs.tag }}
           args: check --format json
+
+  # 同梱した pre-commit hook も「配ったもの」のひとつ。使う側と同じ入り口 —— 使い捨ての
+  # リポジトリの .pre-commit-config.yaml から、タグを rev に指して呼ぶ。
+  #
+  # 2経路を両方回す。既定（args を書かない = check --diff HEAD）と、args: [check] の上書き。
+  # 既定だけでは、引数を渡す口の壊れが通り抜ける（hook の既定引数と衝突して exit 2 になる類）。
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 直近のタグに合わせる
+        id: tag
+        run: |
+          tag=$(git describe --tags --abbrev=0)
+          echo "確かめる版: $tag"
+          git checkout --detach "$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      # hook は language: golang。pre-commit は自前の env に esorp をビルドして呼ぶ。
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: pre-commit を入れる
+        run: pip install pre-commit
+
+      # esorp.yaml は使う側が init で持つもの。ここでは配った版のソースからビルドして呼ぶ。
+      # PATH には置かない —— 検証の対象は pre-commit が自分でビルドする esorp であって、
+      # PATH に居合わせた esorp が拾われては、hook が動いたことにならない。
+      - name: 使い捨てリポジトリを立てる
+        run: |
+          set -euo pipefail
+          go build -o "$RUNNER_TEMP/esorp-for-init" ./cmd/esorp
+          consumer="$RUNNER_TEMP/consumer"
+          mkdir -p "$consumer"
+          cd "$consumer"
+          git init -q
+          git config user.email verify@example.com
+          git config user.name verify
+          cat > existing.go <<'GO'
+          package main
+
+          func Existing() {
+          	// 昔の実装をここで消した
+          	println("existing")
+          }
+          GO
+          "$RUNNER_TEMP/esorp-for-init" init
+          git add -A
+          git commit -qm "既存の違反を1つ抱えた状態"
+
+          # 新しい違反。コミットせず stage に置く —— pre-commit は未 stage の変更を
+          # stash するので、stage しないと hook から見えない（使う側の git commit と同じ形）。
+          cat > new.go <<'GO'
+          package main
+
+          func New() {
+          	// 直前のバージョンから引き継いだ処理
+          	println("new")
+          }
+          GO
+          git add new.go
+
+      - name: 既定のまま呼ぶ（差分の違反だけを掴む）
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/consumer"
+          cat > .pre-commit-config.yaml <<CONFIG
+          repos:
+            - repo: https://github.com/ShiroDoromoto/esorp
+              rev: $TAG
+              hooks:
+                - id: esorp
+          CONFIG
+          git add .pre-commit-config.yaml
+
+          if pre-commit run --all-files > out.txt 2>&1; then
+            cat out.txt
+            echo "::error::新しい違反を掴めていない（緑で終わった）"
+            exit 1
+          fi
+          cat out.txt
+          grep -q 'new.go' out.txt || { echo "::error::新しい違反を報告していない"; exit 1; }
+          ! grep -q 'existing.go' out.txt || { echo "::error::既存の違反まで報告している（差分に絞れていない）"; exit 1; }
+
+      - name: args で上書きして呼ぶ（ツリー全体を見る）
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/consumer"
+          cat > .pre-commit-config.yaml <<CONFIG
+          repos:
+            - repo: https://github.com/ShiroDoromoto/esorp
+              rev: $TAG
+              hooks:
+                - id: esorp
+                  args: [check]
+          CONFIG
+          git add .pre-commit-config.yaml
+
+          if pre-commit run --all-files > out.txt 2>&1; then
+            cat out.txt
+            echo "::error::違反を掴めていない（緑で終わった）"
+            exit 1
+          fi
+          cat out.txt
+          # exit 2 は設定エラー。args を渡す口が壊れているとここに落ちる。
+          grep -q 'exit code: 1' out.txt || { echo "::error::違反あり（1）以外で終わった"; exit 1; }
+          grep -q 'existing.go' out.txt || { echo "::error::既存の違反を報告していない（ツリー全体を見ていない）"; exit 1; }
+          grep -q 'new.go' out.txt || { echo "::error::新しい違反を報告していない"; exit 1; }
+
+      - name: 違反を直すと緑になる
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/consumer"
+          cat > .pre-commit-config.yaml <<CONFIG
+          repos:
+            - repo: https://github.com/ShiroDoromoto/esorp
+              rev: $TAG
+              hooks:
+                - id: esorp
+          CONFIG
+          cat > new.go <<'GO'
+          package main
+
+          func New() {
+          	println("new")
+          }
+          GO
+          git add -A
+          pre-commit run --all-files
