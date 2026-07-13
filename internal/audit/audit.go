@@ -243,19 +243,16 @@ func specOf(cfg *config.Config, m matched) (scan.LangSpec, bool) {
 // 出現順で区別する。sel で落ちるコメントも照合までは回し、出現順だけ進めて報告しない。ここを
 // 飛ばすと、同じ違反のキーが check と check --diff で食い違い、baseline が効かなくなる。
 func auditFile(cfg *config.Config, root string, m matched, sel Selection, res *Result) error {
-	spec, ok := specOf(cfg, m)
+	comments, spec, ok, err := read(cfg, root, m)
+	if err != nil {
+		return err
+	}
 	if !ok {
 		res.Skipped = append(res.Skipped, m.path)
 		return nil
 	}
 
-	src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(m.path)))
-	if err != nil {
-		return fmt.Errorf("%s を読めません: %w", m.path, err)
-	}
-
 	syn := cfg.Syntax[m.syntax]
-	comments := place.Classify(scan.Scan(src, spec), spec)
 	res.Files++
 	for _, c := range comments {
 		if sel.covers(m.path, c.Line, c.EndLine) {
@@ -286,6 +283,21 @@ func auditFile(cfg *config.Config, root string, m matched, sel Selection, res *R
 		}
 	}
 	return nil
+}
+
+// read は、ファイル1つを読み、位置クラスを付けたコメントを返す。ok が false なら、そのファイルの
+// 字句を持っていない（呼び手が Skipped に載せる）。
+func read(cfg *config.Config, root string, m matched) ([]place.Comment, scan.LangSpec, bool, error) {
+	spec, ok := specOf(cfg, m)
+	if !ok {
+		return nil, spec, false, nil
+	}
+
+	src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(m.path)))
+	if err != nil {
+		return nil, spec, false, fmt.Errorf("%s を読めません: %w", m.path, err)
+	}
+	return place.Classify(scan.Scan(src, spec), spec), spec, true, nil
 }
 
 // evaluate は、コメント1つを 器 → 書式 → 語彙 の順に検査する。先に落ちたら後は見ない。置き場所や

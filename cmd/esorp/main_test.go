@@ -1044,3 +1044,104 @@ func TestInitFormatWithoutDiff(t *testing.T) {
 		t.Error("設定を書いてしまった（フラグを撥ねたなら、何もしない）")
 	}
 }
+
+// lexiconSource は、層1 に反するコメント（leading）にも候補パターンが当たることを見るためのソース。
+// 語彙の精度は器と関係なく決まるので、lexicon は層1 を当てない。
+const lexiconSource = `package p
+
+// F は何かをする。以前は同期だった。
+func F() {
+	// 以前はここで前方移行していた。
+	_ = 1
+}
+
+// G は、それ以前の形式も読む。
+func G() {}
+`
+
+// TestLexiconTry は、候補パターンをツリーに当てて当たりを見せることを確かめる。判定はしないので、
+// 当たっても終了コードは 0（違反ではない）。
+func TestLexiconTry(t *testing.T) {
+	cfgPath := tree(t, testConfig, lexiconSource)
+
+	var stdout strings.Builder
+	if got := run([]string{"lexicon", "--config", cfgPath, "--try", `(^|[\s。、])以前は`}, &stdout, io.Discard); got != exitOK {
+		t.Fatalf("run(lexicon) = %d, want %d\n%s", got, exitOK, stdout.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"a.go:3:1  place=doc kind=line",
+		"a.go:5:2  place=leading kind=line",
+		"2 件が当たりました",
+		"1 ファイル / 3 コメント中 66.67%",
+		"esorp は判定しません",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("出力に %q が無い:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "それ以前") {
+		t.Errorf("直前が文頭・句読点・空白でない「以前は」に当たっている:\n%s", out)
+	}
+}
+
+// TestLexiconTryJSON は、機械可読の出力に、照合に使った本文（折り返しを畳んだもの）が乗ることを
+// 確かめる。原文だけでは、句が行をまたいで当たったときに、なぜ当たったのかが読み取れない。
+func TestLexiconTryJSON(t *testing.T) {
+	const src = "package p\n\n// F は接続を開く。\n// 以前は同期だった。\nfunc F() {}\n"
+	cfgPath := tree(t, testConfig, src)
+
+	var stdout strings.Builder
+	if got := run([]string{"lexicon", "--config", cfgPath, "--format", "json", "--try", "以前は"}, &stdout, io.Discard); got != exitOK {
+		t.Fatalf("run(lexicon --format json) = %d, want %d\n%s", got, exitOK, stdout.String())
+	}
+
+	var got struct {
+		Version int    `json:"version"`
+		Pattern string `json:"pattern"`
+		Summary struct {
+			Files    int `json:"files"`
+			Comments int `json:"comments"`
+			Hits     int `json:"hits"`
+		} `json:"summary"`
+		Hits []struct {
+			Path string `json:"path"`
+			Line int    `json:"line"`
+			Body string `json:"body"`
+		} `json:"hits"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &got); err != nil {
+		t.Fatalf("JSON が読めない: %v\n%s", err, stdout.String())
+	}
+	if got.Version != 1 || got.Pattern != "以前は" || got.Summary.Hits != 1 || got.Summary.Comments != 1 {
+		t.Fatalf("summary が違う: %+v", got)
+	}
+	if len(got.Hits) != 1 || got.Hits[0].Path != "a.go" || got.Hits[0].Line != 3 {
+		t.Fatalf("hits が違う: %+v", got.Hits)
+	}
+	if want := "F は接続を開く。以前は同期だった。"; got.Hits[0].Body != want {
+		t.Errorf("body = %q, want %q（折り返しを畳んだ本文）", got.Hits[0].Body, want)
+	}
+}
+
+// TestLexiconTryBadInput は、パターンを渡さない・正規表現として読めない指定を、黙って通さないことを
+// 確かめる。
+func TestLexiconTryBadInput(t *testing.T) {
+	cfgPath := tree(t, testConfig, lexiconSource)
+
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"--try が無い", []string{"lexicon", "--config", cfgPath}},
+		{"正規表現として読めない", []string{"lexicon", "--config", cfgPath, "--try", "(?i)["}},
+		{"余分な引数", []string{"lexicon", "--config", cfgPath, "--try", "以前は", "b.go"}},
+		{"未知の --format", []string{"lexicon", "--config", cfgPath, "--try", "以前は", "--format", "yaml"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := run(tc.args, io.Discard, io.Discard); got != exitConfig {
+				t.Fatalf("run(%v) = %d, want %d", tc.args, got, exitConfig)
+			}
+		})
+	}
+}

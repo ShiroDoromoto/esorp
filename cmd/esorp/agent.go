@@ -159,6 +159,11 @@ func agentMap() agentDoc {
 				What:    "今ある違反をスナップショットする。載せた違反は報告されないが、一覧として見える状態で残る",
 				When:    "導入時に一度。ラチェットは減る方向にしか動かず、CI では使わない",
 			},
+			{
+				Command: "esorp lexicon --try <正規表現> --format json",
+				What:    "候補の語彙をツリーの全コメントに当て、件数と当たった本文を出す。判定はしない（真陽性か偽陽性かを読むのは、あなた）",
+				When:    "層2 に語彙を足す前。誤検知するガードは例外指定を誘発し、やがてツールごと無視される。測らずに足さない",
+			},
 		},
 		Output: agentOutput{
 			Command:    "esorp check --diff --format json",

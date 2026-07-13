@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -42,6 +43,7 @@ const usage = `esorp — コメントの置き場所と書式を監査する
   esorp check --diff [<ref>] 変更分のみ監査する（既定の <ref> は origin/HEAD）
   esorp explain <file>:<line>  その行のコメントが、なぜ違反で、どう始末するのかを説明する
   esorp baseline update      既存の違反をスナップショットする（減る方向のみ）
+  esorp lexicon --try <re>   層2 に足す前に、候補の語彙を自分のコーパスで測る
   esorp agent                エージェント向けの入口（層3 に答えるのは、あなた）
   esorp help                 この使い方を表示する
 
@@ -75,6 +77,16 @@ baseline update のフラグ:
   --config <path>   設定ファイルの場所（既定: esorp.yaml）
   --allow-new       今ある違反を新しく baseline に載せる。CI では使わない
 
+lexicon のフラグ:
+  --config <path>   設定ファイルの場所（既定: esorp.yaml）。この場所がツリーの根になる
+  --try <re>        当てる候補パターン（Go の正規表現。rules: の pattern と同じ書き方）
+  --format <fmt>    出力の形式（text | json、既定: text）
+
+  層2 の語彙を足す前に、それが自分のコーパスでどれだけ誤検知するかを測る口。当てる本文は層2 と
+  同じ（折り返しを畳んだもの）なので、ここで出た件数が、足したときに当たる件数そのもの。
+  真陽性か偽陽性かは判定しない——当たりを読んで決めるのは、あなた。違反ではないので、当たっても
+  終了コードは 0。
+
 agent のフラグ:
   --format <fmt>    出力の形式（text | json、既定: text）
 
@@ -106,6 +118,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runExplain(args[1:], stdout, stderr)
 	case "baseline":
 		return runBaseline(args[1:], stdout, stderr)
+	case "lexicon":
+		return runLexicon(args[1:], stdout, stderr)
 	case "agent":
 		return runAgent(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
@@ -251,7 +265,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	}
 	a.result.Suppress(a.base)
 
-	if err := report.Warnings(stderr, a.result); err != nil {
+	if err := report.Warnings(stderr, a.result.Skipped); err != nil {
 		fmt.Fprintf(stderr, "esorp: %v\n", err)
 		return exitConfig
 	}
@@ -458,6 +472,64 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 
 	fmt.Fprintf(stdout, "esorp: baseline を書きました（%d 件 → %d 件 / 今の違反は %d 件）\n",
 		before, len(entries), len(a.result.Findings))
+	return exitOK
+}
+
+// runLexicon は、候補の語彙を自分のコーパスに当てて見せる。設定も README も「足す前に測れ」と言う
+// が、測る手段が無ければ「稀なら足さない方がまし」は守りようがない。当たりを見せるだけで、真陽性か
+// 偽陽性かは判定しない（読むのは人間、あるいは層3 のエージェント）。当たっても違反ではないので、
+// 終了コードは 0 のまま——CI を赤くする口ではない。
+func runLexicon(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("lexicon", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", "esorp.yaml", "設定ファイルの場所")
+	format := fs.String("format", "text", "出力の形式（text | json）")
+	try := fs.String("try", "", "当てる候補パターン（Go の正規表現）")
+	if err := fs.Parse(args); err != nil {
+		return exitConfig
+	}
+	if fs.NArg() > 0 {
+		fmt.Fprintf(stderr, "esorp lexicon: 余分な引数 %q（測るツリーは --config の場所で決まります）\n", fs.Arg(0))
+		return exitConfig
+	}
+	if !knownFormat("lexicon", *format, stderr) {
+		return exitConfig
+	}
+	if *try == "" {
+		fmt.Fprintln(stderr, "esorp lexicon: --try <パターン> を指定してください")
+		return exitConfig
+	}
+
+	re, err := regexp.Compile(*try)
+	if err != nil {
+		fmt.Fprintf(stderr, "esorp lexicon: --try のパターンが正規表現として読めません: %v\n", err)
+		return exitConfig
+	}
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitConfig
+	}
+
+	trial, err := audit.Try(cfg, filepath.Dir(*configPath), re)
+	if err != nil {
+		fmt.Fprintf(stderr, "esorp: %v\n", err)
+		return exitConfig
+	}
+
+	if err := report.Warnings(stderr, trial.Skipped); err != nil {
+		fmt.Fprintf(stderr, "esorp: %v\n", err)
+		return exitConfig
+	}
+	write := report.TryText
+	if *format == "json" {
+		write = report.TryJSON
+	}
+	if err := write(stdout, trial); err != nil {
+		fmt.Fprintf(stderr, "esorp: %v\n", err)
+		return exitConfig
+	}
 	return exitOK
 }
 
