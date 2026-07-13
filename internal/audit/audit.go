@@ -207,6 +207,9 @@ func excludedEverywhere(cfg *config.Config, names []string, dir string) bool {
 func auditFile(cfg *config.Config, root string, m matched, sel Selection, res *Result) error {
 	spec, ok := scan.SpecFor(m.path)
 	if !ok {
+		spec, ok = scan.FamilySpec(cfg.FamilyOf(m.syntax))
+	}
+	if !ok {
 		res.Skipped = append(res.Skipped, m.path)
 		return nil
 	}

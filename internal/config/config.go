@@ -115,6 +115,15 @@ type Where struct {
 	Path []string `yaml:"path"`
 }
 
+// FamilyOf は、syntax エントリ name のファミリ。family: を省いたエントリは、キーがファミリ名
+// そのもの（syntax.hash は family: hash）。
+func (c *Config) FamilyOf(name string) string {
+	if f := c.Syntax[name].Family; f != "" {
+		return f
+	}
+	return name
+}
+
 // Error は設定エラー。設定が読めない・スキーマに合わない・正規表現が不正、のいずれか。
 // CLI はこれを終了コード 2 に写し、違反あり（1）と区別する。
 type Error struct {
@@ -160,7 +169,7 @@ func (c *Config) validate() []string {
 		add("syntax: が空です。検査するファイルがありません")
 	}
 	for _, name := range slices.Sorted(maps.Keys(c.Syntax)) {
-		validateSyntax(name, c.Syntax[name], add)
+		validateSyntax(name, c.FamilyOf(name), c.Syntax[name], add)
 	}
 
 	seen := map[string]bool{}
@@ -209,13 +218,9 @@ func (c *Config) validate() []string {
 	return problems
 }
 
-func validateSyntax(name string, s Syntax, add func(string, ...any)) {
+func validateSyntax(name, family string, s Syntax, add func(string, ...any)) {
 	at := "syntax." + name
 
-	family := s.Family
-	if family == "" {
-		family = name
-	}
 	if !slices.Contains(knownFamilies, family) {
 		add("%s.family: %q を読むスキャナがありません（今あるのは %s）", at, family, strings.Join(knownFamilies, " / "))
 	}

@@ -149,6 +149,28 @@ func TestRunContentOnlyFamilies(t *testing.T) {
 	}
 }
 
+// TestRunFamilyFallback は、拡張子も既知の名前も持たないファイル（.githooks/pre-commit）が、
+// 当たった syntax エントリのファミリから字句を引けることを確かめる。エントリ名がファミリ名でない
+// （family: で指す）場合も同じ。cstyle は既定の字句を持たないので、そちらは検査せず Skipped に
+// 落ちる——読まなかったことは黙らずに告げる。
+func TestRunFamilyFallback(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "esorp.yaml", "syntax:\n"+
+		"  hooks:\n    family: hash\n    files: [\".githooks/*\"]\n    mode: content-only\n"+
+		"  cstyle:\n    files: [\"tools/gen\"]\n    mode: content-only\n"+historyRule)
+
+	write(t, root, ".githooks/pre-commit", "#!/bin/sh\n# かつてはこうだった\nexec esorp check\n")
+	write(t, root, "tools/gen", "package main // かつてはこうだった\n")
+
+	res := run(t, root)
+	if got := ids(res); len(got) != 1 || got[0] != "no-history" {
+		t.Errorf("違反 = %v, want [no-history]（hash ファミリの字句で読めること）", got)
+	}
+	if len(res.Skipped) != 1 || res.Skipped[0] != "tools/gen" {
+		t.Errorf("読まなかったファイル = %v, want [tools/gen]（cstyle に既定の字句は無い）", res.Skipped)
+	}
+}
+
 // TestRunLexiconWherePath は、where.path が files: と同じ照合（! 始まりで除外）を通ることを確かめる。
 func TestRunLexiconWherePath(t *testing.T) {
 	root := t.TempDir()

@@ -385,3 +385,19 @@ func SpecFor(path string) (LangSpec, bool) {
 	}
 	return LangSpec{}, false
 }
+
+// FamilySpec は、構文ファミリの既定の字句。名前からも拡張子からも引けないファイル
+// （.githooks/pre-commit）を、設定が files: で当てたエントリのファミリから読むためのもの。
+// cstyle が既定を持たないのは、コメント記号は共通でも、器の判定が言語ごとの宣言の語彙に依るため。
+// 取り違えた語彙で位置クラスを決めると、doc でないコメントが doc を名乗り、書式の検査が誤爆する。
+func FamilySpec(family string) (LangSpec, bool) {
+	switch family {
+	case "hash":
+		return ShellSpec(), true
+	case "sgml":
+		return SGMLSpec(), true
+	case "cssblock":
+		return CSSSpec(), true
+	}
+	return LangSpec{}, false
+}
