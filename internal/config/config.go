@@ -153,7 +153,16 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, &Error{Path: path, Problems: []string{err.Error()}}
 	}
+	return parse(data, path)
+}
 
+// TemplateConfig は、esorp init が生成するテンプレートを設定として読む。init --diff が、手元の
+// 設定と比べる相手として使う。
+func TemplateConfig() (*Config, error) {
+	return parse([]byte(Template), "テンプレート")
+}
+
+func parse(data []byte, path string) (*Config, error) {
 	var cfg Config
 	if err := yaml.UnmarshalWithOptions(data, &cfg, yaml.Strict()); err != nil {
 		return nil, &Error{Path: path, Problems: []string{strings.TrimSpace(err.Error())}}

@@ -799,3 +799,48 @@ func TestExplainJSONStatus(t *testing.T) {
 		t.Errorf("コメントの無い行の status が違う: %+v", s)
 	}
 }
+
+// TestInitDiff は、init --diff が手元の設定と現行テンプレートの差分を出すことを押さえる。testConfig は
+// doc の書式を何も課しておらず、trailing のラベルもテンプレートと違うので、そこが差として出る。差分が
+// あっても違反ではないので 0 で終わり、設定は書き換えない。
+func TestInitDiff(t *testing.T) {
+	cfgPath := tree(t, testConfig, "")
+	before, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	if got := run([]string{"init", "--config", cfgPath, "--diff"}, &out, io.Discard); got != exitOK {
+		t.Fatalf("init --diff = %d, want %d\n%s", got, exitOK, out.String())
+	}
+
+	for _, want := range []string{
+		"allow[doc].form.subject",
+		"allow[trailing].label",
+		"esorp は設定を書き換えません",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("%q が出ていない:\n%s", want, out.String())
+		}
+	}
+
+	after, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Error("init --diff が設定を書き換えた")
+	}
+}
+
+// TestInitDiffNoConfig は、比べる相手が無いときに設定エラーで終わることを押さえる。差分が空
+// （＝テンプレートと同じ）と、設定がそもそも無いのは、別の状態。
+func TestInitDiffNoConfig(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "esorp.yaml")
+
+	var errOut strings.Builder
+	if got := run([]string{"init", "--config", missing, "--diff"}, io.Discard, &errOut); got != exitConfig {
+		t.Fatalf("init --diff（設定なし） = %d, want %d", got, exitConfig)
+	}
+}

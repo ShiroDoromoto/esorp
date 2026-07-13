@@ -37,6 +37,7 @@ const usage = `esorp — コメントの置き場所と書式を監査する
 
 使い方:
   esorp init                 設定ファイル（esorp.yaml）を生成する
+  esorp init --diff          現行テンプレートと手元の設定の差分を見せる（書き換えない）
   esorp check                設定に従いツリー全体を監査する
   esorp check --diff [<ref>] 変更分のみ監査する（既定の <ref> は origin/HEAD）
   esorp explain <file>:<line>  その行のコメントが、なぜ違反で、どう始末するのかを説明する
@@ -44,8 +45,11 @@ const usage = `esorp — コメントの置き場所と書式を監査する
   esorp help                 この使い方を表示する
 
 init のフラグ:
-  --config <path>   生成する場所（既定: esorp.yaml）
+  --config <path>   生成する場所（既定: esorp.yaml）。--diff では比べる相手
   --force           既にある設定ファイルを上書きする
+  --diff            現行テンプレートと手元の設定の差分を見せる。設定は生成された時点で
+                    あなたのものなので、ツールを更新しても勝手には変わらない。既定ルールの
+                    改善は、この口から見て、取り込むかどうかを自分で決める
 
 check のフラグ:
   --config <path>   設定ファイルの場所（既定: esorp.yaml）。この場所がツリーの根になる
@@ -107,12 +111,16 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "esorp.yaml", "生成する場所")
 	force := fs.Bool("force", false, "既にある設定ファイルを上書きする")
+	diffMode := fs.Bool("diff", false, "現行テンプレートと手元の設定の差分を見せる")
 	if err := fs.Parse(args); err != nil {
 		return exitConfig
 	}
 	if fs.NArg() > 0 {
 		fmt.Fprintf(stderr, "esorp init: 余分な引数 %q（生成する場所は --config で指定します）\n", fs.Arg(0))
 		return exitConfig
+	}
+	if *diffMode {
+		return runInitDiff(*configPath, stdout, stderr)
 	}
 
 	if _, err := os.Stat(*configPath); err == nil && !*force {
@@ -125,6 +133,38 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	}
 
 	fmt.Fprintf(stdout, "esorp: %s を書きました。使わない言語のエントリは削ってください\n", *configPath)
+	return exitOK
+}
+
+// runInitDiff は、現行テンプレートと手元の設定の差分を見せる。設定は生成された時点でユーザーのもの
+// なので、ツールを更新しても勝手には変わらない。既定ルールの改善を届ける口はここだけで、取り込むか
+// どうかはユーザーが決める。差分があっても、それは違反ではないので 0 で終わる。
+func runInitDiff(configPath string, stdout, stderr io.Writer) int {
+	local, err := config.Load(configPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "esorp: %v\n", err)
+		return exitConfig
+	}
+	tmpl, err := config.TemplateConfig()
+	if err != nil {
+		fmt.Fprintf(stderr, "esorp: %v\n", err)
+		return exitConfig
+	}
+
+	sections := config.Diff(local, tmpl)
+	if len(sections) == 0 {
+		fmt.Fprintf(stdout, "esorp: %s は現行テンプレートと同じです\n", configPath)
+		return exitOK
+	}
+
+	fmt.Fprintf(stdout, "%s と現行テンプレートの差分です。\n", configPath)
+	for _, s := range sections {
+		fmt.Fprintf(stdout, "\n%s\n", s.Title)
+		for _, line := range s.Lines {
+			fmt.Fprintf(stdout, "  %s\n", line)
+		}
+	}
+	fmt.Fprint(stdout, "\n取り込むかどうかはあなたが決めます。esorp は設定を書き換えません。\n")
 	return exitOK
 }
 
