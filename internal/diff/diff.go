@@ -42,6 +42,10 @@ func (r Ranges) Overlaps(path string, from, to int) bool {
 func Changed(root, ref string) (Ranges, error) {
 	base, err := git(root, "merge-base", ref, "HEAD")
 	if err != nil {
+		if shallow(root) {
+			return nil, fmt.Errorf("%s と HEAD の分岐点を取れません（浅いクローンなので、分岐点まで履歴が届いていません。"+
+				"actions/checkout なら fetch-depth: 0）: %w", ref, err)
+		}
 		return nil, fmt.Errorf("%s と HEAD の分岐点を取れません: %w", ref, err)
 	}
 
@@ -127,6 +131,13 @@ func hunk(line string) (Range, bool, error) {
 		return Range{}, false, nil
 	}
 	return Range{From: first, To: first + n - 1}, true, nil
+}
+
+// shallow は、root のリポジトリが浅いクローンかを見る。判定そのものが落ちたときは false
+// （分岐点を取れない理由の説明に使うだけなので、判定できなければ何も足さない）。
+func shallow(root string) bool {
+	out, err := git(root, "rev-parse", "--is-shallow-repository")
+	return err == nil && strings.TrimSpace(out) == "true"
 }
 
 // git は root で git を回し、標準出力を返す。落ちたときは標準エラーをそのままエラーに載せる。

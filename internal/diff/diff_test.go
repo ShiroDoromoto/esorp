@@ -1,6 +1,9 @@
 package diff
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -70,6 +73,49 @@ func TestParseBadHunk(t *testing.T) {
 	_, err := Parse(strings.NewReader("+++ b/a.go\n@@ -1 @@\n"))
 	if err == nil {
 		t.Error("壊れたハンクヘッダを読めてしまいました")
+	}
+}
+
+// TestChangedShallow は、浅いクローンで分岐点が取れないときに、その理由を告げることを見る。
+// depth 1 で取った枝に、比較先を浅いまま足す形（CI の checkout の既定）を再現する。
+func TestChangedShallow(t *testing.T) {
+	origin := t.TempDir()
+	git := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	write := func(dir, name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	git(origin, "init", "-q", "-b", "main")
+	write(origin, "a.go", "package p\n")
+	git(origin, "add", "-A")
+	git(origin, "commit", "-q", "-m", "main")
+	git(origin, "checkout", "-q", "-b", "feature")
+	write(origin, "b.go", "package p\n")
+	git(origin, "add", "-A")
+	git(origin, "commit", "-q", "-m", "feature")
+
+	work := filepath.Join(t.TempDir(), "work")
+	git(t.TempDir(), "clone", "-q", "--depth", "1", "--branch", "feature", "file://"+origin, work)
+	git(work, "fetch", "-q", "--no-tags", "origin", "+refs/heads/main:refs/remotes/origin/main")
+
+	_, err := Changed(work, "origin/main")
+	if err == nil {
+		t.Fatal("浅いクローンで分岐点が取れてしまいました")
+	}
+	if !strings.Contains(err.Error(), "浅いクローン") {
+		t.Errorf("浅いことを告げていません: %v", err)
 	}
 }
 
