@@ -186,12 +186,12 @@ esorp lexicon --try '(?i)previously'
 ```
 
 ```
-internal/scan/lexer.go:88:1  place=doc kind=line
-  // Scan は、previously appended bytes を読み直さない。
-
-1 件が当たりました（56 ファイル / 474 コメント中 0.21%）
-真陽性か偽陽性かは、esorp は判定しません。当たりを読んで、足すかどうかを決めてください。
+internal/store/index.go:3:1  place=doc kind=line
+  // Append は、索引の末尾に足す。previously 書き出した領域は読み直さない。
 ```
+
+当たりを全部並べたあと、件数と、それが全コメントに占める割合を書きます。**真陽性か偽陽性かは
+判定しません** — 当たりを読んで、足すかどうかを決めるのはあなたです。
 
 当てる本文は層2 とまったく同じ（折り返しを畳んだもの）なので、**ここで出た件数が、`rules:` に
 足したときに当たる件数そのもの**です。層1（器と書式）は当てません——語彙の精度は、コメントが
@@ -239,8 +239,8 @@ esorp check --diff --format json
   "review": {
     "question": "このコメントは、目の前のコードの説明ですか。…",
     "comments": [
-      {"path": "internal/scan/scan.go", "line": 42, "col": 1,
-       "place": "doc", "kind": "line", "text": "// …"}
+      {"path": "internal/store/index.go", "line": 3, "col": 1,
+       "place": "doc", "kind": "line", "text": "// Append は、索引の末尾に足す。…"}
     ]
   }
 }
