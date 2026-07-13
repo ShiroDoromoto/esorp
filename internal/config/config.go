@@ -36,12 +36,23 @@ type Config struct {
 	Syntax      map[string]Syntax `yaml:"syntax"`
 	Disposition map[string]string `yaml:"disposition"`
 	Rules       []Rule            `yaml:"rules"`
+	Review      *Review           `yaml:"review"`
 	Baseline    string            `yaml:"baseline"`
 
 	// RespectGitignore は、gitignore されたものを走査から外すか。git が「自分のコードではない」と
 	// 宣言しているものを、esorp も自分のコードとして扱わない。gitignore を黙って見にいくのは設定に
 	// 見えない挙動になるので、方針としてここに書かせる。git リポジトリでなければ効かない。
 	RespectGitignore bool `yaml:"respect_gitignore"`
+}
+
+// Review は層3（意味）の口。esorp はコメントの意味を判定しない。層1（器と書式）と層2（語彙）を
+// 通り抜けたコメントを、変更分に絞って機械可読で渡し、この問いを添えるだけで、答えるのは esorp を
+// 走らせているエージェント自身。書かなければ層3 は開かない（既定を持たない）。
+type Review struct {
+	// Question は、通り抜けたコメント1つずつに対してエージェントへ投げる問い。二値で答えられる
+	// ものにする。カテゴリに分けさせると、決定論で解けなかった分類問題を確率的な機械に押し付ける
+	// ことになり、非決定性が暴れる。
+	Question string `yaml:"question"`
 }
 
 // Syntax は構文ファミリごとのエントリ。キーが cstyle のようなファミリ名そのものであれば
@@ -182,6 +193,9 @@ func (c *Config) validate() []string {
 
 	if len(c.Syntax) == 0 {
 		add("syntax: が空です。検査するファイルがありません")
+	}
+	if c.Review != nil && strings.TrimSpace(c.Review.Question) == "" {
+		add("review.question: 必須です。問いが無いなら、review: ごと消してください（層3 は開きません）")
 	}
 	for _, name := range slices.Sorted(maps.Keys(c.Syntax)) {
 		validateSyntax(name, c.FamilyOf(name), c.Syntax[name], add)

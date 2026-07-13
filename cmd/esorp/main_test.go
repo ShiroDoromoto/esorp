@@ -142,7 +142,7 @@ func TestCheckJSONOutput(t *testing.T) {
 		t.Fatalf("JSON として読めない: %v\n%s", err, stdout.String())
 	}
 
-	if got.Version != 1 || got.Summary.Files != 1 || got.Summary.Violations != 3 {
+	if got.Version != 2 || got.Summary.Files != 1 || got.Summary.Violations != 3 {
 		t.Errorf("summary が違う: %+v", got.Summary)
 	}
 	if len(got.Violations) != 3 {
@@ -842,5 +842,104 @@ func TestInitDiffNoConfig(t *testing.T) {
 	var errOut strings.Builder
 	if got := run([]string{"init", "--config", missing, "--diff"}, io.Discard, &errOut); got != exitConfig {
 		t.Fatalf("init --diff（設定なし） = %d, want %d", got, exitConfig)
+	}
+}
+
+// reviewConfig は、層3 の口を開けた設定。question を書いてあるので review が出る。
+const reviewConfig = testConfig + `
+review:
+  question: |
+    このコメントは、目の前のコードの説明ですか。それとも、事情・履歴・作業メモですか。
+`
+
+// TestCheckReview は、層3 の材料——層1・層2 を通り抜けたコメントと、それらに投げる問い——が
+// check --diff --format json に出ることを確かめる。esorp は意味を判定しないので、ここに答えは無い
+// （答えるのは、この出力を読んでいるエージェント自身）。渡すのは通り抜けた doc だけで、層1 で落ちた
+// leading は violations の側にいる。違反も終了コードも、層3 を開いたからといって変わらない。
+func TestCheckReview(t *testing.T) {
+	cfgPath := gitTree(t, reviewConfig, "// ファイル冒頭。\npackage p\n")
+	dir := filepath.Dir(cfgPath)
+
+	src := `// ファイル冒頭。
+package p
+
+// F は何かをする。
+func F() {
+	// 文の直前。
+	_ = 1
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout strings.Builder
+	if got := run([]string{"check", "--config", cfgPath, "--format", "json", "--diff", "HEAD"}, &stdout, io.Discard); got != exitViolated {
+		t.Fatalf("check --diff --format json = %d, want %d\n%s", got, exitViolated, stdout.String())
+	}
+
+	var got struct {
+		Version    int `json:"version"`
+		Violations []struct {
+			ID string `json:"id"`
+		} `json:"violations"`
+		Review *struct {
+			Question string `json:"question"`
+			Comments []struct {
+				Path  string `json:"path"`
+				Line  int    `json:"line"`
+				Place string `json:"place"`
+				Text  string `json:"text"`
+			} `json:"comments"`
+		} `json:"review"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &got); err != nil {
+		t.Fatalf("JSON として読めない: %v\n%s", err, stdout.String())
+	}
+
+	if got.Version != 2 {
+		t.Errorf("version = %d, want 2（review を足した形）", got.Version)
+	}
+	if got.Review == nil {
+		t.Fatalf("review が出ていない:\n%s", stdout.String())
+	}
+	if !strings.Contains(got.Review.Question, "目の前のコードの説明ですか") {
+		t.Errorf("問いが添えられていない: %q", got.Review.Question)
+	}
+
+	if len(got.Review.Comments) != 1 {
+		t.Fatalf("渡されたコメント = %d 件, want 1: %+v", len(got.Review.Comments), got.Review.Comments)
+	}
+	if c := got.Review.Comments[0]; c.Place != "doc" || c.Line != 4 || !strings.Contains(c.Text, "F は何かをする") {
+		t.Errorf("渡されたコメントが違う: %+v", c)
+	}
+	if len(got.Violations) != 1 || got.Violations[0].ID != "place-not-allowed" {
+		t.Errorf("違反が変わっている: %+v", got.Violations)
+	}
+}
+
+// TestCheckReviewClosedByDefault は、層3 が既定では開かないことを確かめる。設定に review: を
+// 書かなければ何も出ない（ツールは既定を持たない）。書いてあっても、変更分に絞っていなければ
+// 出ない（ツリー全体の通り抜けたコメントを、毎回エージェントに渡さない）。
+func TestCheckReviewClosedByDefault(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		cfg  string
+		args []string
+	}{
+		{name: "review: を書いていない", cfg: testConfig, args: []string{"--format", "json", "--diff", "HEAD"}},
+		{name: "変更分に絞っていない", cfg: reviewConfig, args: []string{"--format", "json"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfgPath := gitTree(t, tt.cfg, testSource)
+
+			var stdout strings.Builder
+			args := append([]string{"check", "--config", cfgPath}, tt.args...)
+			run(args, &stdout, io.Discard)
+
+			if strings.Contains(stdout.String(), `"review"`) {
+				t.Errorf("層3 の口が開いている:\n%s", stdout.String())
+			}
+		})
 	}
 }

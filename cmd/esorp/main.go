@@ -58,6 +58,10 @@ check のフラグ:
                     コメントだけを監査する（pre-commit / PR 向け）。baseline も併せて効く。
                     <ref> は末尾に置く（他のフラグは <ref> より前に並べる）
 
+  設定に review: を書いてあると、--diff かつ --format json のときだけ、層1・層2 を通り抜けた
+  コメントと、それらに投げる問いが review として出る（層3）。esorp は意味を判定せず、LLM も
+  呼ばない。答えるのは、この出力を読んでいるエージェント自身。終了コードは変わらない。
+
 explain のフラグ:
   --config <path>   設定ファイルの場所（既定: esorp.yaml）
   --format <fmt>    出力の形式（text | json、既定: text）

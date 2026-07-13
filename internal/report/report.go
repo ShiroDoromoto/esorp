@@ -63,6 +63,25 @@ type jsonReport struct {
 	Summary    jsonSummary     `json:"summary"`
 	Violations []jsonViolation `json:"violations"`
 	Skipped    []string        `json:"skipped"`
+
+	// Review は層3（意味）の材料。設定に review: を書き、変更分に絞った（check --diff）ときだけ
+	// 出る。esorp はここに答えを持たない——判定するのは、この出力を読んでいるエージェント自身。
+	Review *jsonReview `json:"review,omitempty"`
+}
+
+// jsonReview は、層1・層2 を通り抜けたコメントと、それらに投げる問い。
+type jsonReview struct {
+	Question string        `json:"question"`
+	Comments []jsonComment `json:"comments"`
+}
+
+type jsonComment struct {
+	Path  string `json:"path"`
+	Line  int    `json:"line"`
+	Col   int    `json:"col"`
+	Place string `json:"place"`
+	Kind  string `json:"kind"`
+	Text  string `json:"text"`
 }
 
 type jsonSummary struct {
@@ -86,7 +105,7 @@ type jsonViolation struct {
 // JSON は、機械可読の出力を書く。violations と skipped は、空でも null でなく空配列にする。
 func JSON(w io.Writer, res *audit.Result) error {
 	out := jsonReport{
-		Version: 1,
+		Version: 2,
 		Summary: jsonSummary{
 			Files:      res.Files,
 			Comments:   res.Comments,
@@ -101,6 +120,23 @@ func JSON(w io.Writer, res *audit.Result) error {
 	}
 	for _, f := range res.Findings {
 		out.Violations = append(out.Violations, violation(f))
+	}
+	if res.Review != nil {
+		rv := &jsonReview{
+			Question: strings.TrimRight(res.Review.Question, "\n"),
+			Comments: make([]jsonComment, 0, len(res.Review.Comments)),
+		}
+		for _, c := range res.Review.Comments {
+			rv.Comments = append(rv.Comments, jsonComment{
+				Path:  c.Path,
+				Line:  c.Line,
+				Col:   c.Col,
+				Place: c.Place.String(),
+				Kind:  c.Kind.String(),
+				Text:  c.Text,
+			})
+		}
+		out.Review = rv
 	}
 
 	return encode(w, out)

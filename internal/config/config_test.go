@@ -254,3 +254,43 @@ func TestLoadReportsAllProblems(t *testing.T) {
 		t.Errorf("問題が %d 件しか挙がっていない: %v", len(cerr.Problems), cerr.Problems)
 	}
 }
+
+// TestReviewNeedsQuestion は、問いの無い review: を設定エラーにすることを確かめる。層3 は
+// 「通り抜けたコメントを渡し、問いを添える」ことが全部なので、問いが無ければ渡す意味が無い。
+// 黙って空の問いを渡すより、設定を書いた時点で気づける方がよい。
+func TestReviewNeedsQuestion(t *testing.T) {
+	_, err := load(t, `
+syntax:
+  cstyle:
+    files: ["**/*.go"]
+    mode: structural
+    allow:
+      - place: doc
+review: {}
+`)
+	if err == nil {
+		t.Fatal("問いの無い review: が通った")
+	}
+	if !strings.Contains(err.Error(), "review.question") {
+		t.Errorf("何が悪いのかを言っていない: %v", err)
+	}
+}
+
+// TestReviewAbsentIsFine は、review: を書かなければ層3 が開かないだけで、設定として正しいことを
+// 確かめる。ツールは層3 の既定を持たない。
+func TestReviewAbsentIsFine(t *testing.T) {
+	cfg, err := load(t, `
+syntax:
+  cstyle:
+    files: ["**/*.go"]
+    mode: structural
+    allow:
+      - place: doc
+`)
+	if err != nil {
+		t.Fatalf("review: の無い設定が通らない: %v", err)
+	}
+	if cfg.Review != nil {
+		t.Error("書いていない review: が入っている")
+	}
+}

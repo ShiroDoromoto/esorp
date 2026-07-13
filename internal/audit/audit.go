@@ -45,6 +45,27 @@ type Result struct {
 	Findings  []Finding
 	Skipped   []string
 	Baselined int
+
+	// Review は層3 に渡す材料。設定に review: があり、かつ監査するコメントを絞っている
+	// （check --diff）ときだけ入る。ツリー全体の「通り抜けたコメント」を毎回エージェントに渡しても
+	// 読み切れないし、今書いたものでもない。nil なら層3 の口は開いていない。
+	Review *Review
+}
+
+// Review は層3（意味）に渡す材料。esorp は意味を判定しないので、ここに答えは無い。層1・層2 の
+// どれにも当たらなかったコメントと、それらに投げる問いが並ぶだけで、答えるのは esorp を走らせて
+// いるエージェント自身。
+type Review struct {
+	Question string
+	Comments []Passed
+}
+
+// Passed は、層1・層2 のどれにも当たらなかったコメント1つ。器も形も正しく、語彙にも触れていない——
+// つまり esorp が決定論で言えることは、もう何も無い。それでも事情を語っているかどうかは、意味を
+// 読まなければ分からない。
+type Passed struct {
+	Path string
+	place.Comment
 }
 
 // Entries は、今の違反を baseline のエントリに写す。baseline update が書き出すもの。
@@ -91,6 +112,10 @@ func (s Selection) covers(path string, from, to int) bool {
 // 見ないと並びが揺れる）。
 func Run(cfg *config.Config, root string, sel Selection) (*Result, error) {
 	res := &Result{Findings: []Finding{}}
+
+	if cfg.Review != nil && sel != nil {
+		res.Review = &Review{Question: cfg.Review.Question, Comments: []Passed{}}
+	}
 
 	paths, err := collect(cfg, root, sel)
 	if err != nil {
@@ -252,8 +277,12 @@ func auditFile(cfg *config.Config, root string, m matched, sel Selection, res *R
 
 	target := rule.Target{Syntax: m.syntax, Path: m.path}
 	for _, c := range comments {
-		for _, v := range evaluate(c, syn, cfg, target, spec) {
+		vs := evaluate(c, syn, cfg, target, spec)
+		for _, v := range vs {
 			add(c, v)
+		}
+		if len(vs) == 0 && res.Review != nil && sel.covers(m.path, c.Line, c.EndLine) {
+			res.Review.Comments = append(res.Review.Comments, Passed{Path: m.path, Comment: c})
 		}
 	}
 	return nil
