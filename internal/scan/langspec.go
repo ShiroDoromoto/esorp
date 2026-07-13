@@ -89,6 +89,10 @@ type LangSpec struct {
 	// ただの文字列であり、コードでもない。
 	BlockScalars bool
 
+	// Heredocs は、ヒアドキュメント（シェルの <<EOF … EOF）を持つか。ブロックスカラーと同じく、
+	// 中身はコメント記号を含みうるただの文字列。
+	Heredocs bool
+
 	// DocLine は doc 専用の行コメント記法。Go は持たない。
 	DocLine []string
 
@@ -284,6 +288,7 @@ func ShellSpec() LangSpec {
 		Name:              "shell",
 		LineComment:       "#",
 		LineCommentSpaced: true,
+		Heredocs:          true,
 		Strings: []StringSpec{
 			{Open: `"`, Close: `"`, Escape: true},
 			{Open: "'", Close: "'"},
@@ -291,12 +296,13 @@ func ShellSpec() LangSpec {
 	}
 }
 
-// YAMLSpec は YAML の字句（hash ファミリ）。ブロックスカラー（| >）の中身は、コメント記号を含みうる
-// ただの文字列。
+// YAMLSpec は YAML の字句（hash ファミリ）。長い文字列はブロックスカラー（| >）で書くもので、
+// ヒアドキュメントは持たない（「<<」は併合キー）。
 func YAMLSpec() LangSpec {
 	spec := ShellSpec()
 	spec.Name = "yaml"
 	spec.BlockScalars = true
+	spec.Heredocs = false
 	return spec
 }
 
@@ -304,6 +310,7 @@ func YAMLSpec() LangSpec {
 func TOMLSpec() LangSpec {
 	spec := ShellSpec()
 	spec.Name = "toml"
+	spec.Heredocs = false
 	return spec
 }
 
@@ -333,11 +340,13 @@ func GitignoreSpec() LangSpec {
 }
 
 // PowerShellSpec は PowerShell の字句（hash ファミリ）。「#」に加えてブロックコメント <# #> を持つ。
+// ヒアドキュメントの記法は違う（@" … "@）ので、シェルのものは持たせない。
 func PowerShellSpec() LangSpec {
 	spec := ShellSpec()
 	spec.Name = "powershell"
 	spec.BlockOpen = "<#"
 	spec.BlockClose = "#>"
+	spec.Heredocs = false
 	return spec
 }
 

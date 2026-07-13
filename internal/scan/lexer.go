@@ -49,6 +49,17 @@ type lexer struct {
 
 	// lineStart は現在行の先頭のバイト位置。列を出すのに使う。
 	lineStart int
+
+	// pending は、この行で開いたヒアドキュメント。中身が始まるのは次の行なので、行を読み終えて
+	// から、開いた順に読む。1行で2つ開ける（cat <<A <<B）。
+	pending []heredoc
+}
+
+// heredoc は、開いたヒアドキュメント1つ。Dash は <<- で開いたもので、閉じの区切りの前にタブを
+// 置ける。
+type heredoc struct {
+	Delim string
+	Dash  bool
 }
 
 func (s *lexer) scan() []Token {
@@ -67,11 +78,16 @@ func (s *lexer) scanOnce() {
 		if s.spec.BlockScalars {
 			s.blockScalar(string(s.src[start:s.pos-1]), line)
 		}
+		for _, h := range s.pending {
+			s.heredocBody(h)
+		}
+		s.pending = nil
 	case c == ' ' || c == '\t' || c == '\r':
 		s.pos++
 	case s.tryShebang():
 	case s.tryComment():
 	case s.tryString():
+	case s.tryHeredoc():
 	case s.tryRegex():
 	case s.tryJSX():
 	default:
@@ -194,6 +210,123 @@ func (s *lexer) skipIndented(parent string) {
 	if end > start {
 		s.emit(KindString, line, col, endLine, string(s.src[start:end]))
 	}
+}
+
+// tryHeredoc は、現在位置がヒアドキュメントの開き（<<EOF / <<-'EOF'）なら、開きの記号だけを読み、
+// 区切りを控える。中身が始まるのは次の行なので、ここでは読まない。区切り自身（EOF / 'EOF'）は
+// 控えるだけで読まず、後ろの語や文字列として普通に読ませる。
+func (s *lexer) tryHeredoc() bool {
+	if !s.spec.Heredocs || !s.has("<<") || s.has("<<<") {
+		return false
+	}
+
+	i := s.pos + 2
+	dash := false
+	if i < len(s.src) && s.src[i] == '-' {
+		dash = true
+		i++
+	}
+
+	j := i
+	for j < len(s.src) && (s.src[j] == ' ' || s.src[j] == '\t') {
+		j++
+	}
+	delim, ok := heredocDelim(s.src, j)
+	if !ok {
+		return false
+	}
+
+	line, col := s.line, s.col()
+	text := string(s.src[s.pos:i])
+	s.pos = i
+	s.emit(KindPunct, line, col, line, text)
+	s.pending = append(s.pending, heredoc{Delim: delim, Dash: dash})
+	return true
+}
+
+// heredocDelim は、src の pos に立つヒアドキュメントの区切りを読む。引用符で囲めるが、囲まなければ
+// 英字か「_」で始まる語でなければならない。数字や変数から始まるものを区切りと読むと、算術の左シフト
+// （$(( x << 2 ))）がヒアドキュメントの開きに化ける。
+func heredocDelim(src []byte, pos int) (string, bool) {
+	if pos >= len(src) {
+		return "", false
+	}
+
+	if q := src[pos]; q == '\'' || q == '"' {
+		for i := pos + 1; i < len(src) && src[i] != '\n'; i++ {
+			if src[i] == q {
+				return string(src[pos+1 : i]), true
+			}
+		}
+		return "", false
+	}
+
+	r, _ := utf8.DecodeRune(src[pos:])
+	if r != '_' && !unicode.IsLetter(r) {
+		return "", false
+	}
+	end := pos
+	for end < len(src) {
+		r, size := utf8.DecodeRune(src[end:])
+		if !isWordRune(r) {
+			break
+		}
+		end += size
+	}
+	return string(src[pos:end]), true
+}
+
+// heredocBody は、区切りだけの行までを1つの文字列トークンとして読み、その区切りの行ごと読み飛ばす。
+// 中身はコメント記号を含みうるただの文字列であって、コードでもコメントでもない。
+// 区切りが最後まで現れないなら、開きの読み違いなので、1バイトも読まずに戻る。読み違えたまま末尾まで
+// 飲み込むと、その先にある本物のコメントが文字列の中に消え、検査されないまま通る。迷ったら違反にする
+// 側へ倒す。
+func (s *lexer) heredocBody(h heredoc) {
+	end, next := s.findHeredocEnd(h)
+	if end < 0 {
+		return
+	}
+
+	start, line, col := s.pos, s.line, s.col()
+	for s.pos < end {
+		if s.src[s.pos] == '\n' {
+			s.newline()
+			continue
+		}
+		s.pos++
+	}
+	if end > start {
+		s.emit(KindString, line, col, s.line-1, string(s.src[start:end]))
+	}
+
+	s.pos = next
+	if s.pos < len(s.src) {
+		s.newline()
+	}
+}
+
+// findHeredocEnd は、区切りだけの行を探し、中身の終わり（区切りの行の頭）と、区切りの行の次の位置を
+// 返す。見つからなければ end に -1 を返す。
+func (s *lexer) findHeredocEnd(h heredoc) (end, next int) {
+	for p := s.pos; p <= len(s.src); {
+		eol := p
+		for eol < len(s.src) && s.src[eol] != '\n' {
+			eol++
+		}
+
+		text := string(s.src[p:eol])
+		if h.Dash {
+			text = strings.TrimLeft(text, "\t")
+		}
+		if strings.TrimRight(text, "\r") == h.Delim {
+			return p, eol
+		}
+		if eol >= len(s.src) {
+			return -1, 0
+		}
+		p = eol + 1
+	}
+	return -1, 0
 }
 
 func (s *lexer) lineComment(kind Kind) {
