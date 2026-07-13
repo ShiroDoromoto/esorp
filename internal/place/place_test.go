@@ -17,7 +17,7 @@ type want struct {
 func check(t *testing.T, src string, spec scan.LangSpec, wants []want) {
 	t.Helper()
 
-	got := Classify(scan.CStyle([]byte(src), spec), spec)
+	got := Classify(scan.Scan([]byte(src), spec), spec)
 	if len(got) != len(wants) {
 		t.Fatalf("器の数 = %d, want %d\n得たもの: %#v", len(got), len(wants), got)
 	}

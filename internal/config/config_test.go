@@ -131,8 +131,8 @@ func TestLoadErrors(t *testing.T) {
 			want: "mode",
 		},
 		{
-			name: "スキャナの無いファミリ",
-			body: "syntax:\n  hash:\n    files: [\"**/*.sh\"]\n    mode: content-only\n",
+			name: "字句の無いファミリ",
+			body: "syntax:\n  lisp:\n    files: [\"**/*.el\"]\n    mode: content-only\n",
 			want: "スキャナがありません",
 		},
 		{

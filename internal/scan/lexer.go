@@ -1,21 +1,46 @@
 package scan
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 )
 
-// CStyle は cstyle ファミリ（// と /* */ ＋ doc 記法）の字句解析器。言語差はすべて spec が持ち、
-// この関数自体は言語を知らない。不正なソース（閉じていないブロックコメントや文字列）でもエラーに
-// せず、そのトークンを EOF まで伸ばして返す。監査ツールであって、コンパイラではない。
-func CStyle(src []byte, spec LangSpec) []Token {
-	s := &cstyleScanner{src: src, spec: spec, line: 1}
+// scalarIndicator は、ブロックスカラーの見出しに立つ指示子（| > と、その字下げ・切り詰めの修飾）。
+// 修飾は数字と符号がどちらの順にも並ぶ（|2- も |-2 も同じ）。
+var scalarIndicator = regexp.MustCompile(`^[|>][0-9]*[-+]?[0-9]*$`)
+
+// blockScalarHeader は、その行がブロックスカラーを開く見出しなら、行の字下げを返す。指示子が
+// 立つのはキー（key:）か並びの印（-）の直後だけで、ただの値として現れる「|」（cmd: echo |）は
+// 見出しではない。
+func blockScalarHeader(line string) (string, bool) {
+	fields := strings.Fields(line)
+	if len(fields) < 2 || !scalarIndicator.MatchString(fields[len(fields)-1]) {
+		return "", false
+	}
+	if prev := fields[len(fields)-2]; prev != "-" && !strings.HasSuffix(prev, ":") {
+		return "", false
+	}
+	return indentOf(line), true
+}
+
+func indentOf(line string) string {
+	return line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+}
+
+// Scan はソースをトークンに分ける。ファミリ（cstyle / hash / sgml / cssblock）の差も言語差も
+// すべて spec が持ち、この関数自体はどちらも知らない。ファミリが違っても仕事は同じ——コメントと
+// 文字列を見分けること——であり、違うのは記号と、記号がコメントを開く条件だけ。不正なソース
+// （閉じていないブロックコメントや文字列）でもエラーにせず、そのトークンを EOF まで伸ばして返す。
+// 監査ツールであって、コンパイラではない。
+func Scan(src []byte, spec LangSpec) []Token {
+	s := &lexer{src: src, spec: spec, line: 1}
 	return s.scan()
 }
 
-type cstyleScanner struct {
+type lexer struct {
 	src  []byte
 	spec LangSpec
 	toks []Token
@@ -26,7 +51,7 @@ type cstyleScanner struct {
 	lineStart int
 }
 
-func (s *cstyleScanner) scan() []Token {
+func (s *lexer) scan() []Token {
 	for s.pos < len(s.src) {
 		s.scanOnce()
 	}
@@ -34,10 +59,14 @@ func (s *cstyleScanner) scan() []Token {
 }
 
 // scanOnce は、現在位置からトークンを1つ読む（補間の中もここを通る）。
-func (s *cstyleScanner) scanOnce() {
+func (s *lexer) scanOnce() {
 	switch c := s.src[s.pos]; {
 	case c == '\n':
+		start, line := s.lineStart, s.line
 		s.newline()
+		if s.spec.BlockScalars {
+			s.blockScalar(string(s.src[start:s.pos-1]), line)
+		}
 	case c == ' ' || c == '\t' || c == '\r':
 		s.pos++
 	case s.tryComment():
@@ -52,7 +81,7 @@ func (s *cstyleScanner) scanOnce() {
 // tryComment は、現在位置がコメントの開きなら、その1つを読む。doc 記法は行/ブロックコメント記法を
 // 接頭辞に含む（/// は // で始まる）ので先に照合し、開いてすぐ閉じるもの（/**/）は空のブロック
 // コメントであって doc ではないので、doc 記法に食わせない。
-func (s *cstyleScanner) tryComment() bool {
+func (s *lexer) tryComment() bool {
 	for _, p := range s.spec.DocLine {
 		if s.hasDoc(p) {
 			s.lineComment(KindDocLine)
@@ -67,7 +96,7 @@ func (s *cstyleScanner) tryComment() bool {
 			}
 		}
 	}
-	if s.spec.LineComment != "" && s.has(s.spec.LineComment) {
+	if s.lineCommentOpens() {
 		s.lineComment(KindLine)
 		return true
 	}
@@ -78,7 +107,70 @@ func (s *cstyleScanner) tryComment() bool {
 	return false
 }
 
-func (s *cstyleScanner) lineComment(kind Kind) {
+// lineCommentOpens は、現在位置の行コメント記号がコメントを開くかを見る。「//」はどこに現れても
+// 開くが、「#」は語の中にも現れる（シェルの ${x#y}）ので、行頭か空白の直後でなければ開かない。
+// gitignore はさらに狭く、行頭だけ（行中の「#」はパターンの一部）。
+func (s *lexer) lineCommentOpens() bool {
+	if s.spec.LineComment == "" || !s.has(s.spec.LineComment) {
+		return false
+	}
+	if s.pos == s.lineStart {
+		return true
+	}
+	if s.spec.LineCommentAtLineStart {
+		return false
+	}
+	if !s.spec.LineCommentSpaced {
+		return true
+	}
+	c := s.src[s.pos-1]
+	return c == ' ' || c == '\t' || c == '\r'
+}
+
+// blockScalar は、いま読み終えた行がブロックスカラーの見出し（key: | / - >-）なら、その中身を
+// 読み飛ばす。中身はコメント記号を含みうるただの文字列であって、コードでもコメントでもない。
+// 見出しの後ろにはコメントを書けるので（key: | # …）、見出しの判定からは、その行のコメントを外す。
+func (s *lexer) blockScalar(header string, line int) {
+	if n := len(s.toks); n > 0 {
+		if t := s.toks[n-1]; t.Kind.IsComment() && t.Line == line && t.Col-1 <= len(header) {
+			header = header[:t.Col-1]
+		}
+	}
+	indent, ok := blockScalarHeader(header)
+	if !ok {
+		return
+	}
+	s.skipIndented(indent)
+}
+
+// skipIndented は、見出しより深く字下げされた行（と、その間の空行）を1つの文字列トークンとして
+// 読み飛ばす。字下げが見出しまで戻った行で、ブロックスカラーは終わる。
+func (s *lexer) skipIndented(parent string) {
+	start, line, col := s.pos, s.line, s.col()
+	end, endLine := s.pos, s.line
+
+	for s.pos < len(s.src) {
+		eol := s.pos
+		for eol < len(s.src) && s.src[eol] != '\n' {
+			eol++
+		}
+		text := string(s.src[s.pos:eol])
+		if strings.TrimSpace(text) != "" && len(indentOf(text)) <= len(parent) {
+			break
+		}
+		endLine = s.line
+		s.pos = eol
+		end = eol
+		if s.pos < len(s.src) {
+			s.newline()
+		}
+	}
+	if end > start {
+		s.emit(KindString, line, col, endLine, string(s.src[start:end]))
+	}
+}
+
+func (s *lexer) lineComment(kind Kind) {
 	start, line, col := s.pos, s.line, s.col()
 	for s.pos < len(s.src) && s.src[s.pos] != '\n' {
 		s.pos++
@@ -87,7 +179,7 @@ func (s *cstyleScanner) lineComment(kind Kind) {
 	s.emit(kind, line, col, line, text)
 }
 
-func (s *cstyleScanner) blockComment(kind Kind) {
+func (s *lexer) blockComment(kind Kind) {
 	start, line, col := s.pos, s.line, s.col()
 	s.pos += len(s.spec.BlockOpen)
 	depth := 1
@@ -109,7 +201,7 @@ func (s *cstyleScanner) blockComment(kind Kind) {
 	s.emit(kind, line, col, s.line, string(s.src[start:s.pos]))
 }
 
-func (s *cstyleScanner) tryString() bool {
+func (s *lexer) tryString() bool {
 	for _, sp := range s.spec.Strings {
 		n, close, ok := sp.openAt(s.src, s.pos)
 		if !ok {
@@ -132,7 +224,7 @@ func (s *cstyleScanner) tryString() bool {
 // なので、文字列として飲み込むことはできない（中にコメントも文字列も現れうるし、そこに現れた
 // 「}」がテンプレートを閉じるとも限らない）。そこで、文字列の部分を片ごとに出し、補間の中は
 // スキャナ本体を回し直して読む。テンプレートの入れ子は、その再帰で解ける。
-func (s *cstyleScanner) template(sp StringSpec, n int) {
+func (s *lexer) template(sp StringSpec, n int) {
 	start, line, col := s.pos, s.line, s.col()
 	s.pos += n
 
@@ -165,7 +257,7 @@ func (s *cstyleScanner) template(sp StringSpec, n int) {
 
 // interp は、補間の中をコードとして読み、対応する「}」の手前で戻る（その「}」は、続く
 // 文字列の片の先頭になる）。中括弧の深さは、コメントと文字列を読み飛ばしてから数える。
-func (s *cstyleScanner) interp() {
+func (s *lexer) interp() {
 	depth := 1
 	for s.pos < len(s.src) {
 		switch s.src[s.pos] {
@@ -184,7 +276,7 @@ func (s *cstyleScanner) interp() {
 // 見ずに引用符から次の引用符までを文字列にすると、Rust の fn f<'a>(x: &'a str) の 'a>(x: &' が
 // 文字列になり、行の後ろにコメントがあれば、それごと飲み込む。エスケープ列は長さが変わる
 // （\n / \u{1F600}）ので、同じ行で閉じることだけを見る。
-func (s *cstyleScanner) oneRune(sp StringSpec, n int, close string) bool {
+func (s *lexer) oneRune(sp StringSpec, n int, close string) bool {
 	p := s.pos + n
 	if p >= len(s.src) || s.src[p] == '\n' {
 		return false
@@ -204,7 +296,7 @@ func (s *cstyleScanner) oneRune(sp StringSpec, n int, close string) bool {
 // stringLit は、開きの長さ n と、それに対応する閉じ記号を受けて文字列リテラルを1つ読む
 // （閉じ記号が開きに依るのは Rust の r#"…"# のような可変長の区切りがあるため）。改行を含められない
 // 形が閉じずに行末に来たら、不正なソースなので、そこで打ち切る。
-func (s *cstyleScanner) stringLit(sp StringSpec, n int, close string) {
+func (s *lexer) stringLit(sp StringSpec, n int, close string) {
 	start, line, col := s.pos, s.line, s.col()
 	s.pos += n
 
@@ -239,7 +331,7 @@ func (s *cstyleScanner) stringLit(sp StringSpec, n int, close string) {
 // （/don't/）を文字列の開きと読むと、行の後ろにある本物のコメントを文字列の中に飲み込む。
 // 「/」は除算演算子でもあるので、開きかどうかは直前のトークンで見分ける（コメントの // と /* は、
 // ここに来る前に読まれている）。
-func (s *cstyleScanner) tryRegex() bool {
+func (s *lexer) tryRegex() bool {
 	if !s.spec.Regex || s.src[s.pos] != '/' || !s.exprCanStart() {
 		return false
 	}
@@ -253,7 +345,7 @@ func (s *cstyleScanner) tryRegex() bool {
 
 // regexLit は正規表現リテラルを1つ読む。閉じの「/」は、エスケープされておらず、文字クラス […] の
 // 中でもないもの。改行までに閉じなければ、それは正規表現ではないので偽を返す（呼び手が読み直す）。
-func (s *cstyleScanner) regexLit() bool {
+func (s *lexer) regexLit() bool {
 	start, line, col := s.pos, s.line, s.col()
 	s.pos++
 	inClass := false
@@ -287,7 +379,7 @@ func (s *cstyleScanner) regexLit() bool {
 // exprCanStart は、現在位置から式が始まりうるかを、直前のトークンで見る。式が終わった直後
 // （識別子・数値・文字列・閉じ括弧）に来る「/」は除算であり、「<」は比較かジェネリクスであって、
 // リテラルの開きではない。開き括弧・演算子・式を導くキーワード（return …）の後なら、開きでありうる。
-func (s *cstyleScanner) exprCanStart() bool {
+func (s *lexer) exprCanStart() bool {
 	prev := s.lastCode()
 	if prev == nil {
 		return true
@@ -304,7 +396,7 @@ func (s *cstyleScanner) exprCanStart() bool {
 }
 
 // lastCode は、直前の非コメントトークンを返す（無ければ nil）。
-func (s *cstyleScanner) lastCode() *Token {
+func (s *lexer) lastCode() *Token {
 	for i := len(s.toks) - 1; i >= 0; i-- {
 		if !s.toks[i].Kind.IsComment() {
 			return &s.toks[i]
@@ -318,16 +410,16 @@ type mark struct {
 	pos, line, lineStart, toks int
 }
 
-func (s *cstyleScanner) snapshot() mark {
+func (s *lexer) snapshot() mark {
 	return mark{pos: s.pos, line: s.line, lineStart: s.lineStart, toks: len(s.toks)}
 }
 
-func (s *cstyleScanner) restore(m mark) {
+func (s *lexer) restore(m mark) {
 	s.pos, s.line, s.lineStart = m.pos, m.line, m.lineStart
 	s.toks = s.toks[:m.toks]
 }
 
-func (s *cstyleScanner) wordOrPunct() {
+func (s *lexer) wordOrPunct() {
 	line, col, start := s.line, s.col(), s.pos
 
 	r, size := utf8.DecodeRune(s.src[s.pos:])
@@ -351,14 +443,14 @@ func isWordRune(r rune) bool {
 }
 
 // has は、現在位置が p で始まるかを見る（p が空なら常に偽）。
-func (s *cstyleScanner) has(p string) bool {
+func (s *lexer) has(p string) bool {
 	return hasAt(s.src, s.pos, p)
 }
 
 // hasDoc は、現在位置が doc 記法 p に当たるかを見る。記号を重ねた区切り線（//// … ）は
 // doc ではないので、記法の最後の1字がそのまま続くなら当たったことにしない（当てると、
 // 区切り線が doc の器を名乗り、そこが逃げ場になる）。
-func (s *cstyleScanner) hasDoc(p string) bool {
+func (s *lexer) hasDoc(p string) bool {
 	if !s.has(p) {
 		return false
 	}
@@ -374,16 +466,16 @@ func hasAt(src []byte, pos int, p string) bool {
 	return string(src[pos:pos+len(p)]) == p
 }
 
-func (s *cstyleScanner) col() int {
+func (s *lexer) col() int {
 	return s.pos - s.lineStart + 1
 }
 
-func (s *cstyleScanner) newline() {
+func (s *lexer) newline() {
 	s.pos++
 	s.line++
 	s.lineStart = s.pos
 }
 
-func (s *cstyleScanner) emit(kind Kind, line, col, endLine int, text string) {
+func (s *lexer) emit(kind Kind, line, col, endLine int, text string) {
 	s.toks = append(s.toks, Token{Kind: kind, Line: line, Col: col, EndLine: endLine, Text: text})
 }

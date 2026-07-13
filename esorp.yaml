@@ -28,6 +28,21 @@ syntax:
       # place: leading  — 許可しない（文の直前の自由コメント）
       # place: orphan   — 許可しない（どこにも紐づかない浮いたコメント）
 
+  # 器の概念が無いファイル。コメントは「#」1種類しかなく、doc も紐づく宣言も無い。器の集合の
+  # 要素が1個なので、「許可するものを列挙して残りを落とす」が選択の軸として働かない。層2 だけを当てる。
+  hash:
+    files:
+      - "**/*.yml"
+      - "**/*.yaml"
+      - "**/*.sh"
+      - "**/.gitignore"
+    mode: content-only
+
+  sgml:
+    files:
+      - "**/*.md"
+    mode: content-only
+
 # 違反時に提示する始末のしかた。既定は削除（履歴はバージョン管理が持っている）。
 # 残す価値のある判断だけ、行き先を文字列で指定できる。ツールは行き先を規定しない。
 disposition:
@@ -66,6 +81,6 @@ rules:
       変化を語っています。今のコードが何であるかだけを書いてください。
       「以前はこうだった」はバージョン管理が保持しています。
     where:
-      syntax: [cstyle]
+      syntax: [cstyle, hash, sgml]
 
 baseline: .esorp-baseline.json

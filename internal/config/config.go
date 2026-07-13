@@ -21,9 +21,9 @@ import (
 	"github.com/ShiroDoromoto/esorp/internal/scan"
 )
 
-// knownFamilies は、スキャナを持っている構文ファミリ。他のファミリ（hash / sgml / cssblock）は、
-// そのスキャナを実装するまで設定に書けない（書けてしまうと、黙って何も検査しない）。
-var knownFamilies = []string{"cstyle"}
+// knownFamilies は、字句を持っている構文ファミリ。ここに無いファミリは設定に書けない
+// （書けてしまうと、黙って何も検査しない）。
+var knownFamilies = []string{"cstyle", "hash", "sgml", "cssblock"}
 
 // knownViolations は、層1 が出す違反 id。disposition のキーはこれでなければならない。
 var knownViolations = []string{

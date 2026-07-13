@@ -41,7 +41,7 @@ func TestBodyDocNotation(t *testing.T) {
 // TestBodyLinesKeepsInnerIndent は、コメント記号の内側の字下げが残ることを見る。外側とするのは継ぎ行
 // に共通する字下げだけで、それを超えるタブは、開きが行のどこにあっても内側として残る。
 func TestBodyLinesKeepsInnerIndent(t *testing.T) {
-	ts := LangSpec{Name: "ts", LineComment: "//", BlockOpen: "/*", BlockClose: "*/", DocBlock: []string{"/**"}, DocFences: true}
+	ts := LangSpec{Name: "ts", LineComment: "//", BlockOpen: "/*", BlockClose: "*/", BlockStars: true, DocBlock: []string{"/**"}, DocFences: true}
 
 	tests := []struct {
 		name string

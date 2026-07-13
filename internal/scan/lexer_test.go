@@ -26,7 +26,7 @@ func comments(toks []Token) []Token {
 	return out
 }
 
-func TestCStyleGo(t *testing.T) {
+func TestScanGo(t *testing.T) {
 	tests := []struct {
 		name string
 		src  string
@@ -151,7 +151,7 @@ func TestCStyleGo(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := comments(CStyle([]byte(tt.src), GoSpec()))
+			got := comments(Scan([]byte(tt.src), GoSpec()))
 			if len(got) != len(tt.want) {
 				t.Fatalf("コメント数 = %d, want %d\n得たもの: %#v", len(got), len(tt.want), got)
 			}
@@ -167,13 +167,13 @@ func TestCStyleGo(t *testing.T) {
 	}
 }
 
-// TestCStyleKeepsCodeTokens は、コメント以外のトークンを落とさずに返していることを押さえる。
+// TestScanKeepsCodeTokens は、コメント以外のトークンを落とさずに返していることを押さえる。
 // スコープと宣言の判定（internal/place）が、それらを見て行われるため。
-func TestCStyleKeepsCodeTokens(t *testing.T) {
+func TestScanKeepsCodeTokens(t *testing.T) {
 	src := "func f() {\n\t// 中\n}\n"
 
 	var got []string
-	for _, tok := range CStyle([]byte(src), GoSpec()) {
+	for _, tok := range Scan([]byte(src), GoSpec()) {
 		got = append(got, tok.Kind.String()+":"+tok.Text)
 	}
 

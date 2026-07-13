@@ -7,7 +7,8 @@ import (
 )
 
 // Body は、コメントの生テキストから記号を剥がして本文だけにする。剥がすのは、行コメント・ブロック
-// コメント・doc 記法の記号と、ブロックコメントの継ぎ行に添えられる「*」、そして前後の空白と、
+// コメント・doc 記法の記号と、継ぎ行に添えられる「*」（それを添える流儀 spec.BlockStars のときだけ。
+// <!-- --> で剥がすと箇条書きの「*」が消える）、そして前後の空白と、
 // 記号だけになって残る前後の行（中の空行は段落の区切りなので残す）。本文そのものには手を触れない。
 // ラベルの判定（rule）と baseline のキー計算（baseline）が、これを共通の入口にする。
 func Body(text string, spec LangSpec) string {
@@ -20,7 +21,7 @@ func Body(text string, spec LangSpec) string {
 			line = strings.TrimSpace(strings.TrimSuffix(line, spec.BlockClose))
 		}
 		line = trimLongestPrefix(line, openers)
-		if rest, ok := strings.CutPrefix(line, "*"); ok {
+		if rest, ok := strings.CutPrefix(line, "*"); ok && spec.BlockStars {
 			line = rest
 		}
 		lines = append(lines, strings.TrimSpace(line))
@@ -64,8 +65,10 @@ func BodyLines(text string, spec LangSpec) []string {
 		}
 		if o := longestPrefix(s, openers); o != "" {
 			s = strings.TrimPrefix(s, o)
-			s = strings.TrimPrefix(s, "*")
-		} else {
+			if spec.BlockStars {
+				s = strings.TrimPrefix(s, "*")
+			}
+		} else if spec.BlockStars {
 			s = trimContinuationStar(s)
 		}
 		s = strings.TrimPrefix(s, " ")

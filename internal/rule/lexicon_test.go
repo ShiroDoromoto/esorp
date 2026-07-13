@@ -31,7 +31,7 @@ func lexiconWith(t *testing.T, src string, rs []config.Rule, target Target, spec
 	t.Helper()
 
 	var out []Violation
-	for _, c := range place.Classify(scan.CStyle([]byte(src), spec), spec) {
+	for _, c := range place.Classify(scan.Scan([]byte(src), spec), spec) {
 		out = append(out, Lexicon(c, rs, target, spec)...)
 	}
 	return out

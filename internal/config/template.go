@@ -104,6 +104,35 @@ syntax:
       - place: trailing
         label: ["TODO:"]
 
+  # ここから下は「器の概念が無いファイル」。コメントの種類が1つしかなく、doc も紐づく宣言も無いので、
+  # 「許可する器を列挙して残りを落とす」が選択の軸として働かない。層1 を当てず、層2（語彙）だけを当てる。
+  # 層2 は既定を持たないので、下の rules: が空のうちは、これらのファイルでは何も起きない。
+  # それでも書いておくのは、履歴や追跡番号がコードだけに現れるわけではないため（実測では、追跡番号への
+  # 参照は .yml .toml .sh Makefile .gitignore にも遍在していた）。
+  hash:
+    files:
+      - "**/*.yml"
+      - "**/*.yaml"
+      - "**/*.toml"
+      - "**/*.sh"
+      - "**/*.ps1"
+      - "Makefile"
+      - "Dockerfile"
+      - "**/.gitignore"
+    mode: content-only
+
+  sgml:
+    files:
+      - "**/*.md"
+      - "**/*.html"
+      - "**/*.svg"
+    mode: content-only
+
+  cssblock:
+    files:
+      - "**/*.css"
+    mode: content-only
+
 # 違反時に提示する始末のしかた。既定は削除（履歴はバージョン管理が持っている）。
 # 残す価値のある判断だけ、行き先を文字列で指定できる。ツールは行き先を規定しない。
 disposition:

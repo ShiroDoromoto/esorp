@@ -41,7 +41,7 @@ func formWith(t *testing.T, src string, f *config.Form, spec scan.LangSpec) []st
 	target := Target{Syntax: "cstyle", Path: "a.go"}
 
 	var out []string
-	for _, c := range place.Classify(scan.CStyle([]byte(src), spec), spec) {
+	for _, c := range place.Classify(scan.Scan([]byte(src), spec), spec) {
 		i, v := Vessel(c, allows, formDisposition, target, spec)
 		if v != nil {
 			t.Fatalf("器で落ちている（書式のテストにならない）: %s %s %d", v.ID, v.Place, v.Line)

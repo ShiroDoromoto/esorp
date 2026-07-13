@@ -6,7 +6,7 @@ import "strings"
 // ジェネリクスなのかは字句だけでは決まらない（TSX の難所）ので、直前のトークンと次の1字で当たりを
 // 付け、閉じタグに届かないまま尽きたら JSX ではなかったとみなして読み直す。当たりが外れても、
 // 字句を読み落とさない。
-func (s *cstyleScanner) tryJSX() bool {
+func (s *lexer) tryJSX() bool {
 	if !s.spec.JSX || s.src[s.pos] != '<' || !s.jsxCanOpen() {
 		return false
 	}
@@ -20,7 +20,7 @@ func (s *cstyleScanner) tryJSX() bool {
 
 // jsxCanOpen は、この「<」が要素を開きうるかを見る。式がここから始まりうる位置に立ち、次の1字が
 // 名前の始まりか「>」（フラグメント）であることが要る。そうでなければ、それは比較かジェネリクス。
-func (s *cstyleScanner) jsxCanOpen() bool {
+func (s *lexer) jsxCanOpen() bool {
 	n := s.pos + 1
 	if n >= len(s.src) || (s.src[n] != '>' && !isNameStart(s.src[n])) {
 		return false
@@ -29,7 +29,7 @@ func (s *cstyleScanner) jsxCanOpen() bool {
 }
 
 // jsxElement は「<」から要素を1つ読む。閉じないまま尽きたら偽を返す（呼び手が読み直す）。
-func (s *cstyleScanner) jsxElement() bool {
+func (s *lexer) jsxElement() bool {
 	s.wordOrPunct()
 	selfClosing, ok := s.jsxOpenTag()
 	if !ok {
@@ -43,7 +43,7 @@ func (s *cstyleScanner) jsxElement() bool {
 
 // jsxOpenTag は、開きタグの中（タグ名・属性）を「>」または「/>」まで読む。属性の値は文字列か
 // コードなので、そこはスキャナ本体を回し直して読む（タグの中に置かれたコメントも、そこで拾う）。
-func (s *cstyleScanner) jsxOpenTag() (selfClosing, ok bool) {
+func (s *lexer) jsxOpenTag() (selfClosing, ok bool) {
 	for s.pos < len(s.src) {
 		switch {
 		case s.has("/>"):
@@ -65,7 +65,7 @@ func (s *cstyleScanner) jsxOpenTag() (selfClosing, ok bool) {
 }
 
 // jsxChildren は、開きタグの後から対応する閉じタグまでを読む。
-func (s *cstyleScanner) jsxChildren() bool {
+func (s *lexer) jsxChildren() bool {
 	for {
 		s.jsxText()
 		if s.pos >= len(s.src) {
@@ -88,7 +88,7 @@ func (s *cstyleScanner) jsxChildren() bool {
 // （<p>it's http://example.com</p> の // は行コメントではなく、' は文字列を開かない）。テキストと
 // して読まなければ、前者は誤検知になり、後者は行の後ろにある本物のコメントを飲み込む。テキストは
 // コードでもコメントでもないので文字列として出し、空白だけの並びは器の判定に何も足さないので出さない。
-func (s *cstyleScanner) jsxText() {
+func (s *lexer) jsxText() {
 	start, line, col := s.pos, s.line, s.col()
 	for s.pos < len(s.src) {
 		c := s.src[s.pos]
@@ -108,14 +108,14 @@ func (s *cstyleScanner) jsxText() {
 // jsxTagAhead は、現在位置の「<」がタグ（入れ子の要素・フラグメント・閉じタグ）を開くかを見る。
 // 続く1字が名前の始まりでも「>」でも「/」でもなければ、それは不等号であってタグではない
 // （<p>1 < 2</p> のように、テキストには不等号が現れる）。
-func (s *cstyleScanner) jsxTagAhead() bool {
+func (s *lexer) jsxTagAhead() bool {
 	n := s.pos + 1
 	return n < len(s.src) && (s.src[n] == '/' || s.src[n] == '>' || isNameStart(s.src[n]))
 }
 
 // jsxCloseTag は「</ … >」を読む。開きタグと名前が一致するかは見ない。一致しないソースはそもそも
 // 壊れており、監査ツールが求めるのは、字句を読み落とさないことだけ。
-func (s *cstyleScanner) jsxCloseTag() bool {
+func (s *lexer) jsxCloseTag() bool {
 	for s.pos < len(s.src) {
 		switch c := s.src[s.pos]; {
 		case c == '>':
@@ -134,7 +134,7 @@ func (s *cstyleScanner) jsxCloseTag() bool {
 
 // jsxBraces は、JSX の中の { … }（属性の値・子の式）をコードとして読む。中は再びコードなので、
 // スキャナ本体を回し直す。中括弧の深さは、コメントと文字列を読み飛ばしてから数える。
-func (s *cstyleScanner) jsxBraces() {
+func (s *lexer) jsxBraces() {
 	s.wordOrPunct()
 	depth := 1
 	for s.pos < len(s.src) {
@@ -151,7 +151,7 @@ func (s *cstyleScanner) jsxBraces() {
 	}
 }
 
-func (s *cstyleScanner) emitText(start, line, col int) {
+func (s *lexer) emitText(start, line, col int) {
 	text := string(s.src[start:s.pos])
 	if strings.TrimSpace(text) == "" {
 		return

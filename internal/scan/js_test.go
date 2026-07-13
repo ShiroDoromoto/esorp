@@ -2,9 +2,9 @@ package scan
 
 import "testing"
 
-// TestCStyleJS は、JS の字句を押さえる。TS と同じ形（JSDoc・正規表現リテラル・テンプレート
+// TestScanJS は、JS の字句を押さえる。TS と同じ形（JSDoc・正規表現リテラル・テンプレート
 // リテラル）が、型注釈の無いソースでも読めることを見る。
-func TestCStyleJS(t *testing.T) {
+func TestScanJS(t *testing.T) {
 	tests := []struct {
 		name string
 		src  string
@@ -30,7 +30,7 @@ func TestCStyleJS(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := comments(CStyle([]byte(tt.src), JSSpec()))
+			got := comments(Scan([]byte(tt.src), JSSpec()))
 			if len(got) != len(tt.want) {
 				t.Fatalf("コメント数 = %d, want %d\n得たもの: %#v", len(got), len(tt.want), got)
 			}

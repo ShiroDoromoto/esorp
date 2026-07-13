@@ -2,9 +2,9 @@ package scan
 
 import "testing"
 
-// TestCStyleTS は、TS の字句を押さえる。Go / Rust との差はテンプレートリテラルで、
+// TestScanTS は、TS の字句を押さえる。Go / Rust との差はテンプレートリテラルで、
 // ${ … } の中は再びコードなので、そこに現れるコメントはコメントとして読む。
-func TestCStyleTS(t *testing.T) {
+func TestScanTS(t *testing.T) {
 	tests := []struct {
 		name string
 		src  string
@@ -81,7 +81,7 @@ func TestCStyleTS(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := comments(CStyle([]byte(tt.src), TSSpec()))
+			got := comments(Scan([]byte(tt.src), TSSpec()))
 			if len(got) != len(tt.want) {
 				t.Fatalf("コメント数 = %d, want %d\n得たもの: %#v", len(got), len(tt.want), got)
 			}

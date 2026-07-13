@@ -2,9 +2,9 @@ package scan
 
 import "testing"
 
-// TestCStyleRust は、Go との差（ネスト・可変長の生文字列・doc 記法・ライフタイム）がすべて
+// TestScanRust は、Go との差（ネスト・可変長の生文字列・doc 記法・ライフタイム）がすべて
 // LangSpec に収まっていることの検証を兼ねる（スキャナ本体は言語を知らない）。
-func TestCStyleRust(t *testing.T) {
+func TestScanRust(t *testing.T) {
 	tests := []struct {
 		name string
 		src  string
@@ -96,7 +96,7 @@ func TestCStyleRust(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := comments(CStyle([]byte(tt.src), RustSpec()))
+			got := comments(Scan([]byte(tt.src), RustSpec()))
 			if len(got) != len(tt.want) {
 				t.Fatalf("コメント数 = %d, want %d\n得たもの: %#v", len(got), len(tt.want), got)
 			}

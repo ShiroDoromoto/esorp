@@ -123,6 +123,32 @@ func TestRunContentOnly(t *testing.T) {
 	}
 }
 
+// TestRunContentOnlyFamilies は、器の概念が無いファイル（hash / sgml / cssblock）が、拡張子を持つ
+// ものも持たないものも、字句を引けて語彙まで届くことを確かめる。文字列の中の記号（"# …"）や、
+// gitignore のパターンの一部の「#」がコメントに化けないことも、ここで押さえる。
+func TestRunContentOnlyFamilies(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "esorp.yaml", "syntax:\n"+
+		"  hash:\n    files: [\"**/*.yml\", \"**/*.sh\", \"Makefile\", \"**/.gitignore\"]\n    mode: content-only\n"+
+		"  sgml:\n    files: [\"**/*.md\"]\n    mode: content-only\n"+
+		"  cssblock:\n    files: [\"**/*.css\"]\n    mode: content-only\n"+historyRule)
+
+	write(t, root, "ci.yml", "run: |\n  # かつてはここでビルドしていた（ブロックスカラーの中＝文字列）\nkey: 1  # かつてはこうだった\n")
+	write(t, root, "run.sh", "echo \"# かつて\"  # かつてはこうだった\n")
+	write(t, root, "Makefile", "build:\n\tgo build ./...  # かつてはこうだった\n")
+	write(t, root, ".gitignore", "# かつてはこうだった\nfoo#かつて\n")
+	write(t, root, "doc.md", "<!-- かつてはこうだった -->\n\nかつての散文はコメントではない。\n")
+	write(t, root, "site.css", "a { color: #fff; }\n/* かつてはこうだった */\n")
+
+	res := run(t, root)
+	if len(res.Skipped) > 0 {
+		t.Errorf("字句を引けなかったファイル = %v", res.Skipped)
+	}
+	if got := ids(res); len(got) != 6 {
+		t.Errorf("違反 = %v（%#v）, want 6 ファイルに1件ずつ", got, res.Findings)
+	}
+}
+
 // TestRunLexiconWherePath は、where.path が files: と同じ照合（! 始まりで除外）を通ることを確かめる。
 func TestRunLexiconWherePath(t *testing.T) {
 	root := t.TempDir()

@@ -56,9 +56,9 @@ func (sp StringSpec) openAt(src []byte, pos int) (n int, close string, ok bool) 
 	return i + len(quote) - pos, sp.Close + hashes, true
 }
 
-// LangSpec は cstyle ファミリの中の言語差を吸収する。
-// ファミリが同じでも文字列リテラルの文法は言語ごとに違い、そこを取り違えると
-// 文字列の中の // をコメントと誤検知する。
+// LangSpec は言語差を吸収する。ファミリ（cstyle / hash / sgml / cssblock）が違っても、コメントと
+// 文字列を見分けるという仕事は同じであり、違うのは記号と、記号がコメントを開く条件だけ。
+// スキャナ（Scan）は1つで、言語もファミリも知らない。
 // 字句に関わらない DeclKeywords / TypeLikeOpeners / FuncOpeners / DeclPrefixes も、
 // 言語差である以上ここに置く。
 // 使うのは位置クラスの判定（internal/place）だが、判定そのものは言語をまたいで同じであり、
@@ -71,6 +71,23 @@ type LangSpec struct {
 
 	// BlockNests は、ブロックコメントがネストするか（Rust / Swift はネストする）。
 	BlockNests bool
+
+	// LineCommentSpaced は、行コメント記号が、行頭か空白の直後にあるときだけコメントを開くか。
+	// 「#」は語の中にも現れる（シェルの ${x#y}、URL の断片）ので、どこに現れてもコメントと読むと、
+	// コードを本文として飲み込む。
+	LineCommentSpaced bool
+
+	// LineCommentAtLineStart は、行コメント記号が行頭にあるときだけコメントを開くか（gitignore の
+	// 「#」は行頭のみ。行中の「#」はパターンの一部）。
+	LineCommentAtLineStart bool
+
+	// BlockStars は、ブロックコメントの継ぎ行に「*」を添える流儀か（/* … */ の系統）。添えない流儀
+	// （<!-- -->）で剥がすと、箇条書きの「*」が本文から消える。
+	BlockStars bool
+
+	// BlockScalars は、ブロックスカラー（YAML の | >）を持つか。その中身はコメント記号を含みうる
+	// ただの文字列であり、コードでもない。
+	BlockScalars bool
 
 	// DocLine は doc 専用の行コメント記法。Go は持たない。
 	DocLine []string
@@ -127,6 +144,7 @@ func GoSpec() LangSpec {
 		BlockOpen:   "/*",
 		BlockClose:  "*/",
 		BlockNests:  false,
+		BlockStars:  true,
 		Strings: []StringSpec{
 			{Open: `"`, Close: `"`, Escape: true},
 			{Open: "'", Close: "'", Escape: true},
@@ -149,6 +167,7 @@ func RustSpec() LangSpec {
 		BlockOpen:   "/*",
 		BlockClose:  "*/",
 		BlockNests:  true,
+		BlockStars:  true,
 		DocLine:     []string{"///", "//!"},
 		DocBlock:    []string{"/**", "/*!"},
 		DocInner:    []string{"//!", "/*!"},
@@ -176,6 +195,7 @@ func TSSpec() LangSpec {
 		BlockOpen:   "/*",
 		BlockClose:  "*/",
 		BlockNests:  false,
+		BlockStars:  true,
 		Regex:       true,
 		DocBlock:    []string{"/**"},
 		DocFences:   true,
@@ -228,11 +248,113 @@ func JSXSpec() LangSpec {
 	return spec
 }
 
-// SpecFor は、ファイルの拡張子からその言語の字句を選ぶ。設定の files: は glob なので、字句を
-// 持たない拡張子を cstyle ファミリに並べることもできる。持っていないことを黙って飲み込むと、
-// そのファイルは検査されないまま適合したように見えるので、引けなかったことを呼び手に返し、
-// 呼び手が告げる。
+// CSSSpec は CSS の字句（cssblock ファミリ）。行コメントは持たず、/* */ だけ。16進の色（#fff）に
+// 「#」が現れるが、hash ファミリではないので、コメントの開きにはならない。
+func CSSSpec() LangSpec {
+	return LangSpec{
+		Name:       "css",
+		BlockOpen:  "/*",
+		BlockClose: "*/",
+		BlockStars: true,
+		Strings: []StringSpec{
+			{Open: `"`, Close: `"`, Escape: true},
+			{Open: "'", Close: "'", Escape: true},
+		},
+	}
+}
+
+// SGMLSpec は SGML 系（HTML / SVG / Markdown）の字句。コメントは <!-- --> だけで、その外側は
+// タグでも散文でもコメントではない。文字列リテラルを持たないのは、属性値の引用符とMarkdown の
+// 散文の引用符が同じ形をしており、散文の「'」を文字列の開きと読むと、その先のコメントを飲み込む
+// ため。属性値の中に「-->」が現れることは、まず無い。
+func SGMLSpec() LangSpec {
+	return LangSpec{
+		Name:       "sgml",
+		BlockOpen:  "<!--",
+		BlockClose: "-->",
+	}
+}
+
+// ShellSpec はシェルの字句（hash ファミリ）。「#」がコメントを開くのは行頭か空白の直後だけで、
+// 語の中の「#」（${x#y}）はコメントではない。引用符は行をまたげることにしない。またげることにして
+// 閉じ忘れを飲み込むと、その先にある本物のコメントが文字列の中に消え、検査されないまま通る。
+// 迷ったら違反にする側へ倒す。
+func ShellSpec() LangSpec {
+	return LangSpec{
+		Name:              "shell",
+		LineComment:       "#",
+		LineCommentSpaced: true,
+		Strings: []StringSpec{
+			{Open: `"`, Close: `"`, Escape: true},
+			{Open: "'", Close: "'"},
+		},
+	}
+}
+
+// YAMLSpec は YAML の字句（hash ファミリ）。ブロックスカラー（| >）の中身は、コメント記号を含みうる
+// ただの文字列。
+func YAMLSpec() LangSpec {
+	spec := ShellSpec()
+	spec.Name = "yaml"
+	spec.BlockScalars = true
+	return spec
+}
+
+// TOMLSpec は TOML の字句（hash ファミリ）。
+func TOMLSpec() LangSpec {
+	spec := ShellSpec()
+	spec.Name = "toml"
+	return spec
+}
+
+// MakeSpec は Makefile の字句（hash ファミリ）。レシピ行（タブ以降）はシェルだが、「#」がコメントを
+// 開く条件はシェルでも同じなので、レシピ行を分けて読む必要はない。
+func MakeSpec() LangSpec {
+	spec := ShellSpec()
+	spec.Name = "make"
+	return spec
+}
+
+// DockerSpec は Dockerfile の字句（hash ファミリ）。
+func DockerSpec() LangSpec {
+	spec := ShellSpec()
+	spec.Name = "dockerfile"
+	return spec
+}
+
+// GitignoreSpec は gitignore の字句（hash ファミリ）。「#」は行頭のみコメントで、行中の「#」は
+// パターンの一部。引用符も持たない（行はまるごとパターン）。
+func GitignoreSpec() LangSpec {
+	return LangSpec{
+		Name:                   "gitignore",
+		LineComment:            "#",
+		LineCommentAtLineStart: true,
+	}
+}
+
+// PowerShellSpec は PowerShell の字句（hash ファミリ）。「#」に加えてブロックコメント <# #> を持つ。
+func PowerShellSpec() LangSpec {
+	spec := ShellSpec()
+	spec.Name = "powershell"
+	spec.BlockOpen = "<#"
+	spec.BlockClose = "#>"
+	return spec
+}
+
+// SpecFor は、ファイルの名前からその言語の字句を選ぶ。拡張子だけでは足りないのは、拡張子を持たない
+// ファイル（Makefile / Dockerfile / .gitignore）があるため。設定の files: は glob なので、字句を
+// 持たない拡張子をファミリに並べることもできる。持っていないことを黙って飲み込むと、そのファイルは
+// 検査されないまま適合したように見えるので、引けなかったことを呼び手に返し、呼び手が告げる。
 func SpecFor(path string) (LangSpec, bool) {
+	switch filepath.Base(path) {
+	case "Makefile", "makefile", "GNUmakefile":
+		return MakeSpec(), true
+	case "Dockerfile":
+		return DockerSpec(), true
+	case ".gitignore", ".dockerignore":
+		return GitignoreSpec(), true
+	}
+
 	switch filepath.Ext(path) {
 	case ".go":
 		return GoSpec(), true
@@ -246,6 +368,20 @@ func SpecFor(path string) (LangSpec, bool) {
 		return JSSpec(), true
 	case ".jsx":
 		return JSXSpec(), true
+	case ".css":
+		return CSSSpec(), true
+	case ".html", ".htm", ".svg", ".xml", ".md":
+		return SGMLSpec(), true
+	case ".sh", ".bash", ".zsh":
+		return ShellSpec(), true
+	case ".mk":
+		return MakeSpec(), true
+	case ".yml", ".yaml":
+		return YAMLSpec(), true
+	case ".toml":
+		return TOMLSpec(), true
+	case ".ps1", ".psm1":
+		return PowerShellSpec(), true
 	}
 	return LangSpec{}, false
 }

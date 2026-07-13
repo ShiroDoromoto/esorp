@@ -32,7 +32,7 @@ func vessel(t *testing.T, src string, allows []config.Allow) []*Violation {
 	target := Target{Syntax: "cstyle", Path: "a.go"}
 
 	var out []*Violation
-	for _, c := range place.Classify(scan.CStyle([]byte(src), spec), spec) {
+	for _, c := range place.Classify(scan.Scan([]byte(src), spec), spec) {
 		if _, v := Vessel(c, allows, disposition, target, spec); v != nil {
 			out = append(out, v)
 		}
@@ -176,7 +176,7 @@ func TestVesselReturnsMatchedAllow(t *testing.T) {
 	spec := scan.GoSpec()
 	src := "package p\n\n// Open はストアを開く。\nfunc Open() {}\n"
 
-	comments := place.Classify(scan.CStyle([]byte(src), spec), spec)
+	comments := place.Classify(scan.Scan([]byte(src), spec), spec)
 	doc := comments[0]
 
 	allows := []config.Allow{{Place: "header"}, {Place: "doc", Form: &config.Form{Subject: "required"}}}

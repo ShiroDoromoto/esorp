@@ -2,10 +2,10 @@ package scan
 
 import "testing"
 
-// TestCStyleRegex は、正規表現リテラルを押さえる。中身は字句ではないので、そこに現れる引用符は
+// TestScanRegex は、正規表現リテラルを押さえる。中身は字句ではないので、そこに現れる引用符は
 // 文字列を開かず、// はコメントにならない。逆に、除算の「/」を正規表現の開きと読めば、その行から
 // 後ろのコメントを取り違える。分かれ目は直前のトークンだけ。
-func TestCStyleRegex(t *testing.T) {
+func TestScanRegex(t *testing.T) {
 	tests := []struct {
 		name string
 		src  string
@@ -86,7 +86,7 @@ func TestCStyleRegex(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := comments(CStyle([]byte(tt.src), TSSpec()))
+			got := comments(Scan([]byte(tt.src), TSSpec()))
 			if len(got) != len(tt.want) {
 				t.Fatalf("コメント数 = %d, want %d\n得たもの: %#v", len(got), len(tt.want), got)
 			}
@@ -102,20 +102,20 @@ func TestCStyleRegex(t *testing.T) {
 	}
 }
 
-// TestCStyleRegexTSX は、JSX の { … } の中も同じく正規表現を読むことを押さえる（中はコード）。
-func TestCStyleRegexTSX(t *testing.T) {
+// TestScanRegexTSX は、JSX の { … } の中も同じく正規表現を読むことを押さえる（中はコード）。
+func TestScanRegexTSX(t *testing.T) {
 	src := "const a = <p>{s.replace(/'/g, \"\")}</p>; // 実コメント\n"
-	got := comments(CStyle([]byte(src), TSXSpec()))
+	got := comments(Scan([]byte(src), TSXSpec()))
 	if len(got) != 1 || got[0].Text != "// 実コメント" {
 		t.Fatalf("コメント = %#v; want 1件の // 実コメント", got)
 	}
 }
 
-// TestCStyleRegexOnlyWhereDeclared は、正規表現を持たない言語では「/」をリテラルの開きとして
+// TestScanRegexOnlyWhereDeclared は、正規表現を持たない言語では「/」をリテラルの開きとして
 // 読まないことを押さえる（Go の除算は除算）。
-func TestCStyleRegexOnlyWhereDeclared(t *testing.T) {
+func TestScanRegexOnlyWhereDeclared(t *testing.T) {
 	src := "const a = 1\nvar b = a / 2 // 実コメント\n"
-	got := comments(CStyle([]byte(src), GoSpec()))
+	got := comments(Scan([]byte(src), GoSpec()))
 	if len(got) != 1 || got[0].Text != "// 実コメント" {
 		t.Fatalf("コメント = %#v; want 1件の // 実コメント", got)
 	}

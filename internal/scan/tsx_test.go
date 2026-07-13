@@ -2,10 +2,10 @@ package scan
 
 import "testing"
 
-// TestCStyleTSX は、TSX の字句を押さえる。要は「JSX テキストの中に字句は無い」ことと、
+// TestScanTSX は、TSX の字句を押さえる。要は「JSX テキストの中に字句は無い」ことと、
 // それでも「{ … } の中は再びコード」であること。前者を落とすと誤検知し、後者を落とすと
 // JSX のコメント（{/* … */}）を見落とす。
-func TestCStyleTSX(t *testing.T) {
+func TestScanTSX(t *testing.T) {
 	tests := []struct {
 		name string
 		src  string
@@ -104,7 +104,7 @@ func TestCStyleTSX(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := comments(CStyle([]byte(tt.src), TSXSpec()))
+			got := comments(Scan([]byte(tt.src), TSXSpec()))
 			if len(got) != len(tt.want) {
 				t.Fatalf("コメント数 = %d, want %d\n得たもの: %#v", len(got), len(tt.want), got)
 			}

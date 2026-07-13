@@ -217,7 +217,7 @@ func auditFile(cfg *config.Config, root string, m matched, sel Selection, res *R
 	}
 
 	syn := cfg.Syntax[m.syntax]
-	comments := place.Classify(scan.CStyle(src, spec), spec)
+	comments := place.Classify(scan.Scan(src, spec), spec)
 	res.Files++
 	for _, c := range comments {
 		if sel.covers(m.path, c.Line, c.EndLine) {
