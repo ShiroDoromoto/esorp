@@ -155,8 +155,20 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	}
 
 	fmt.Fprintf(stdout, "esorp: %s を書きました。使わない言語のエントリは削ってください\n", *configPath)
+	fmt.Fprint(stdout, initNextSteps)
 	return exitOK
 }
+
+// initNextSteps は、生成した設定で最初の check を赤で殴らないための導線。層2 のプリセットは
+// 過去に書かれたコメントにも当たるので、既存のツリーでは初回が赤くなる。赤で殴られたユーザーは
+// ガードごと無視するようになるため、まず今ある違反を baseline に載せて、そこから増やさない。
+const initNextSteps = `
+既にコメントのあるツリーなら、初回の check は過去のコメントに当たって赤くなります。
+今ある違反をスナップショットしてから始めてください（減る方向にしか動きません）:
+
+    esorp baseline update --allow-new    今ある違反を .esorp-baseline.json に載せる
+    esorp check                          ここから増やさない
+`
 
 // runInitDiff は、現行テンプレートと手元の設定の差分を見せる。設定は生成された時点でユーザーのもの
 // なので、ツールを更新しても勝手には変わらない。既定ルールの改善を届ける口はここだけで、取り込むか

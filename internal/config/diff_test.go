@@ -148,13 +148,18 @@ rules:
     pattern: "かつて"
     message: |
       変化を語っています。
+  - id: no-jargon
+    pattern: "とりま"
+    message: |
+      書き言葉で書いてください。
 baseline: .esorp-baseline.json
 `)
 
 	for _, want := range []string{
 		"allow[doc].form.paragraphs  手元: 2  テンプレート: 1",
 		"allow[leading]  手元だけにあります",
-		"no-history  手元だけにあります（あなたの選択）",
+		"no-history.pattern  手元: かつて  テンプレート: ",
+		"no-jargon  手元だけにあります（あなたの選択）",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("%q が出ていない:\n%s", want, got)

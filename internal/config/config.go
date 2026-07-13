@@ -112,7 +112,8 @@ type Form struct {
 	URLs string `yaml:"urls"`
 }
 
-// Rule は層2（語彙）のルール。プロジェクトが自分で足すものであり、ツールは既定を持たない。
+// Rule は層2（語彙）のルール。語彙を持つのは設定ファイルだけで、ツールのコードは実行時の既定を
+// 持たない（init が書き込むプリセットは、生成された時点でプロジェクトのものになる）。
 type Rule struct {
 	ID      string `yaml:"id"`
 	Pattern string `yaml:"pattern"`

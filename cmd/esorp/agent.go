@@ -105,7 +105,7 @@ func agentMap() agentDoc {
 				Name:          "語彙",
 				Sees:          "コメント本文に現れる、そのプロジェクト固有の専用句",
 				Deterministic: true,
-				Who:           "esorp。ただしルールを書くのはユーザー（ツールは既定を持たない）",
+				Who:           "esorp。ただし語彙を持つのは設定ファイルだけ（init がプリセットを書き込む。消すのも足すのもユーザー）",
 			},
 			{
 				Layer:         3,
