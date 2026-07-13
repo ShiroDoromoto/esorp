@@ -396,6 +396,24 @@ func TestInitWritesUsableConfig(t *testing.T) {
 	}
 }
 
+// TestInitGuidesBothFirstDayMoves は、init の出力が導入初日の営みを両方案内することを確かめる。
+// 既存の違反を baseline に載せる（決定論の側）だけでは片手落ちで、層1・層2 を通り抜けた既存の
+// コメントを層3 に回す口（esorp review）に触れなければ、そこへ辿り着く導線が生成直後に無い。
+func TestInitGuidesBothFirstDayMoves(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "esorp.yaml")
+
+	var stdout, stderr strings.Builder
+	if got := run([]string{"init", "--config", cfgPath}, &stdout, &stderr); got != exitOK {
+		t.Fatalf("run(init) = %d, want %d\n%s", got, exitOK, stderr.String())
+	}
+	for _, want := range []string{"esorp baseline update --allow-new", "esorp review"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("導線に %q が無い: %q", want, stdout.String())
+		}
+	}
+}
+
 // TestInitDoesNotOverwrite は、既にある設定を黙って上書きしないことを確かめる。生成された設定は
 // その時点でユーザーのものであり、手を入れた分は戻ってこない。
 func TestInitDoesNotOverwrite(t *testing.T) {
