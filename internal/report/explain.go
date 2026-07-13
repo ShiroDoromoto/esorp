@@ -82,23 +82,192 @@ func vessel(a config.Allow) string {
 	return b.String()
 }
 
-// formValue は、当たった書式の指定を、その値ごと書き出す。違反 id と form のキーは一対一。
+// formValue は、当たった書式の指定を、その値ごと書き出す。
 func formValue(f *config.Form, id string) string {
+	key, value := formKey(f, id)
+	if value == nil {
+		return key
+	}
+	return fmt.Sprintf("%s: %v", key, value)
+}
+
+// formKey は、当たった書式の指定を、設定のキーとその値に割る。違反 id と form のキーは一対一。
+func formKey(f *config.Form, id string) (string, any) {
 	switch id {
 	case rule.FormSubject:
-		return "subject: " + f.Subject
+		return "subject", f.Subject
 	case rule.FormHeadings:
-		return "headings: " + f.Headings
+		return "headings", f.Headings
 	case rule.FormParagraphs:
-		return fmt.Sprintf("paragraphs: %d", *f.Paragraphs)
+		return "paragraphs", *f.Paragraphs
 	case rule.FormRefs:
-		return "refs: " + f.Refs
+		return "refs", f.Refs
 	case rule.FormMaxLines:
-		return fmt.Sprintf("max_lines: %d", *f.MaxLines)
+		return "max_lines", *f.MaxLines
 	case rule.FormURLs:
-		return "urls: " + f.URLs
+		return "urls", f.URLs
 	default:
-		return id
+		return id, nil
+	}
+}
+
+// explain の状態。指した行が違反しているのか、適合しているのか、そもそもコメントが無かったのかは、
+// 空の explanations では書き分けられない。
+const (
+	statusViolated   = "violated"
+	statusConforming = "conforming"
+	statusNoComment  = "no-comment"
+)
+
+// jsonExplanation は、違反1件（check の JSON と同じ形）に、それを決めた設定の場所と中身を添えたもの。
+type jsonExplanation struct {
+	jsonViolation
+	Baselined bool     `json:"baselined"`
+	Site      jsonSite `json:"site"`
+}
+
+// jsonSite は、違反を決めた設定の該当箇所。違反 id と設定は一対一なので、下の4つのうち1つだけが立つ。
+type jsonSite struct {
+	// Path は設定の中での場所（syntax.cstyle.allow[1].form.paragraphs / rules[0]）。
+	Path string `json:"path"`
+
+	// Syntax は、当たった syntax エントリの名前（層2 の違反では空）。
+	Syntax string `json:"syntax,omitempty"`
+
+	// Allow は許可されている器の列挙（place-not-allowed）。列挙されなかった器のコメントは、
+	// 中身が何であれ違反。
+	Allow []jsonAllow `json:"allow,omitempty"`
+
+	// Label は、その器で許されている札の列挙（label-required）。
+	Label []string `json:"label,omitempty"`
+
+	// Form は、当たった書式の指定（form-*）。
+	Form *jsonFormKey `json:"form,omitempty"`
+
+	// Rule は、当たった層2 のルール。
+	Rule *jsonRule `json:"rule,omitempty"`
+}
+
+type jsonAllow struct {
+	Place string    `json:"place"`
+	Kind  []string  `json:"kind,omitempty"`
+	Label []string  `json:"label,omitempty"`
+	Form  *jsonForm `json:"form,omitempty"`
+}
+
+type jsonForm struct {
+	Subject    string `json:"subject,omitempty"`
+	Headings   string `json:"headings,omitempty"`
+	Paragraphs *int   `json:"paragraphs,omitempty"`
+	Refs       string `json:"refs,omitempty"`
+	MaxLines   *int   `json:"max_lines,omitempty"`
+	URLs       string `json:"urls,omitempty"`
+}
+
+// jsonFormKey は、当たった書式の指定1つ。Value は数（paragraphs / max_lines）か文字列。
+type jsonFormKey struct {
+	Key   string `json:"key"`
+	Value any    `json:"value"`
+}
+
+type jsonRule struct {
+	ID      string    `json:"id"`
+	Pattern string    `json:"pattern"`
+	Message string    `json:"message"`
+	Where   jsonWhere `json:"where"`
+}
+
+type jsonWhere struct {
+	Syntax []string `json:"syntax,omitempty"`
+	Kind   []string `json:"kind,omitempty"`
+	Path   []string `json:"path,omitempty"`
+}
+
+// ExplainJSON は、Explain と同じ中身を機械可読の形で書く。エージェントは check --format json で
+// 違反を読むので、その1件をそのまま explain に渡して根拠まで JSON で引けるようにする。
+func ExplainJSON(w io.Writer, cfg *config.Config, configPath, path string, line int, res *audit.Result, base *baseline.Baseline) error {
+	out := struct {
+		Version      int               `json:"version"`
+		Config       string            `json:"config"`
+		Target       jsonTarget        `json:"target"`
+		Status       string            `json:"status"`
+		Explanations []jsonExplanation `json:"explanations"`
+	}{
+		Version:      1,
+		Config:       configPath,
+		Target:       jsonTarget{Path: path, Line: line},
+		Status:       status(res),
+		Explanations: make([]jsonExplanation, 0, len(res.Findings)),
+	}
+	for _, f := range res.Findings {
+		out.Explanations = append(out.Explanations, jsonExplanation{
+			jsonViolation: violation(f),
+			Baselined:     base.Has(f.Key),
+			Site:          jsonSiteOf(cfg, f),
+		})
+	}
+
+	return encode(w, out)
+}
+
+type jsonTarget struct {
+	Path string `json:"path"`
+	Line int    `json:"line"`
+}
+
+func status(res *audit.Result) string {
+	switch {
+	case len(res.Findings) > 0:
+		return statusViolated
+	case res.Comments == 0:
+		return statusNoComment
+	default:
+		return statusConforming
+	}
+}
+
+// jsonSiteOf は、違反を決めた設定の該当箇所を、その中身ごと組み立てる（site の JSON 版）。
+func jsonSiteOf(cfg *config.Config, f audit.Finding) jsonSite {
+	out := jsonSite{Path: f.Site.Path}
+	if f.Site.Rule >= 0 {
+		r := cfg.Rules[f.Site.Rule]
+		out.Rule = &jsonRule{
+			ID:      r.ID,
+			Pattern: r.Pattern,
+			Message: strings.TrimRight(r.Message, "\n"),
+			Where:   jsonWhere{Syntax: r.Where.Syntax, Kind: r.Where.Kind, Path: r.Where.Path},
+		}
+		return out
+	}
+
+	out.Syntax = f.Syntax
+	allows := cfg.Syntax[f.Syntax].Allow
+	switch {
+	case f.ID == rule.PlaceNotAllowed:
+		out.Allow = make([]jsonAllow, 0, len(allows))
+		for _, a := range allows {
+			out.Allow = append(out.Allow, jsonAllow{Place: a.Place, Kind: a.Kind, Label: a.Label, Form: form(a.Form)})
+		}
+	case f.ID == rule.LabelRequired:
+		out.Label = allows[f.Site.Allow].Label
+	default:
+		key, value := formKey(allows[f.Site.Allow].Form, f.ID)
+		out.Form = &jsonFormKey{Key: key, Value: value}
+	}
+	return out
+}
+
+func form(f *config.Form) *jsonForm {
+	if f == nil {
+		return nil
+	}
+	return &jsonForm{
+		Subject:    f.Subject,
+		Headings:   f.Headings,
+		Paragraphs: f.Paragraphs,
+		Refs:       f.Refs,
+		MaxLines:   f.MaxLines,
+		URLs:       f.URLs,
 	}
 }
 

@@ -606,6 +606,7 @@ func TestExplainBadTarget(t *testing.T) {
 		{"行が数でない", []string{"explain", "--config", cfgPath, "a.go:six"}},
 		{"ファイルが無い", []string{"explain", "--config", cfgPath, "無い.go:1"}},
 		{"監査の対象でないファイル", []string{"explain", "--config", cfgPath, "b.txt:1"}},
+		{"未知の --format", []string{"explain", "--config", cfgPath, "--format", "xml", "a.go:6"}},
 	}
 
 	for _, tt := range tests {
@@ -618,5 +619,183 @@ func TestExplainBadTarget(t *testing.T) {
 				t.Error("何が起きたか告げていない")
 			}
 		})
+	}
+}
+
+// explanation は explain --format json の1件。site は違反 id と一対一なので、立っている枝で
+// どこが決めたのかが分かる。
+type explanation struct {
+	Path      string `json:"path"`
+	Line      int    `json:"line"`
+	ID        string `json:"id"`
+	Place     string `json:"place"`
+	Message   string `json:"message"`
+	Baselined bool   `json:"baselined"`
+	Site      struct {
+		Path   string `json:"path"`
+		Syntax string `json:"syntax"`
+		Allow  []struct {
+			Place string   `json:"place"`
+			Label []string `json:"label"`
+		} `json:"allow"`
+		Label []string `json:"label"`
+		Form  *struct {
+			Key   string `json:"key"`
+			Value any    `json:"value"`
+		} `json:"form"`
+		Rule *struct {
+			ID      string `json:"id"`
+			Pattern string `json:"pattern"`
+			Where   struct {
+				Syntax []string `json:"syntax"`
+			} `json:"where"`
+		} `json:"rule"`
+	} `json:"site"`
+}
+
+type explainJSON struct {
+	Version int    `json:"version"`
+	Config  string `json:"config"`
+	Target  struct {
+		Path string `json:"path"`
+		Line int    `json:"line"`
+	} `json:"target"`
+	Status       string        `json:"status"`
+	Explanations []explanation `json:"explanations"`
+}
+
+// explainJSONOf は explain --format json を回し、出力を読む。
+func explainJSONOf(t *testing.T, cfgPath, target string, want int) explainJSON {
+	t.Helper()
+	var stdout strings.Builder
+	if got := run([]string{"explain", "--config", cfgPath, "--format", "json", target}, &stdout, io.Discard); got != want {
+		t.Fatalf("run(explain --format json %s) = %d, want %d\n%s", target, got, want, stdout.String())
+	}
+	var out explainJSON
+	if err := json.Unmarshal([]byte(stdout.String()), &out); err != nil {
+		t.Fatalf("JSON として読めない: %v\n%s", err, stdout.String())
+	}
+	return out
+}
+
+// TestExplainJSON は、explain が text と同じ根拠（設定の場所とその中身）を機械可読で出すことを
+// 確かめる。エージェントは check --format json で違反を読むので、その1件をそのまま explain に
+// 渡して根拠まで JSON で引ける道が要る。
+func TestExplainJSON(t *testing.T) {
+	cfgPath := tree(t, testConfig, testSource)
+
+	out := explainJSONOf(t, cfgPath, "a.go:6:2", exitViolated)
+	if out.Version != 1 || out.Config != cfgPath || out.Status != "violated" {
+		t.Errorf("頭が違う: %+v", out)
+	}
+	if out.Target.Path != "a.go" || out.Target.Line != 6 {
+		t.Errorf("target が違う: %+v", out.Target)
+	}
+	if len(out.Explanations) != 1 {
+		t.Fatalf("説明が %d 件（1 件のはず）: %+v", len(out.Explanations), out.Explanations)
+	}
+
+	e := out.Explanations[0]
+	if e.Path != "a.go" || e.Line != 6 || e.ID != "place-not-allowed" || e.Place != "leading" || e.Baselined {
+		t.Errorf("違反が違う: %+v", e)
+	}
+	if e.Message != "この位置のコメントは許可されていません。" {
+		t.Errorf("message が違う: %q", e.Message)
+	}
+	if e.Site.Path != "syntax.cstyle.allow" || e.Site.Syntax != "cstyle" {
+		t.Errorf("site が違う: %+v", e.Site)
+	}
+	if len(e.Site.Allow) != 3 {
+		t.Fatalf("許可されている器が %d 件（3 件のはず）: %+v", len(e.Site.Allow), e.Site.Allow)
+	}
+	if a := e.Site.Allow[2]; a.Place != "trailing" || len(a.Label) != 1 || a.Label[0] != "TODO:" {
+		t.Errorf("allow[2] が違う: %+v", a)
+	}
+
+	label := explainJSONOf(t, cfgPath, "a.go:8", exitViolated).Explanations[0]
+	if s := label.Site; s.Path != "syntax.cstyle.allow[2].label" || len(s.Label) != 1 || s.Label[0] != "TODO:" {
+		t.Errorf("label-required の site が違う: %+v", label.Site)
+	}
+}
+
+// TestExplainJSONForm は、書式の違反が form の該当キーを、その値ごと指すことを確かめる（数は数のまま）。
+func TestExplainJSONForm(t *testing.T) {
+	const cfg = `
+syntax:
+  cstyle:
+    files: ["**/*.go"]
+    mode: structural
+    allow:
+      - place: header
+      - place: doc
+        form:
+          paragraphs: 1
+disposition:
+  form-paragraphs: |
+    doc コメントの段落は1つです。
+`
+	const src = "package p\n\n// F は何かをする。\n//\n// 背景を足した段落。\nfunc F() {}\n"
+
+	e := explainJSONOf(t, tree(t, cfg, src), "a.go:3", exitViolated).Explanations[0]
+	if e.ID != "form-paragraphs" || e.Site.Path != "syntax.cstyle.allow[1].form.paragraphs" {
+		t.Errorf("site が違う: %+v", e.Site)
+	}
+	if e.Site.Form == nil || e.Site.Form.Key != "paragraphs" || e.Site.Form.Value != float64(1) {
+		t.Errorf("form が違う: %+v", e.Site.Form)
+	}
+}
+
+// TestExplainJSONLexicon は、層2 の違反が rules の該当エントリを、その中身ごと指すことを確かめる。
+func TestExplainJSONLexicon(t *testing.T) {
+	const cfg = `
+syntax:
+  cstyle:
+    files: ["**/*.go"]
+    mode: structural
+    allow:
+      - place: header
+      - place: doc
+rules:
+  - id: no-history
+    pattern: "かつて|従来"
+    message: |
+      変化を語っています。今のコードが何であるかだけを書いてください。
+    where:
+      syntax: [cstyle]
+`
+	const src = "package p\n\n// F は、かつての実装を置き換えたもの。\nfunc F() {}\n"
+
+	e := explainJSONOf(t, tree(t, cfg, src), "a.go:3", exitViolated).Explanations[0]
+	if e.ID != "no-history" || e.Site.Path != "rules[0]" || e.Site.Syntax != "" {
+		t.Errorf("site が違う: %+v", e.Site)
+	}
+	r := e.Site.Rule
+	if r == nil || r.ID != "no-history" || r.Pattern != "かつて|従来" || len(r.Where.Syntax) != 1 {
+		t.Fatalf("rule が違う: %+v", r)
+	}
+	if r.Where.Syntax[0] != "cstyle" {
+		t.Errorf("where.syntax が違う: %+v", r.Where.Syntax)
+	}
+}
+
+// TestExplainJSONStatus は、違反・適合・コメント無しを status で書き分けることを確かめる（空の
+// explanations では、指し損なったのかどうかが読み手に分からない）。baseline が抑えている違反も、
+// 問われたなら説明する。
+func TestExplainJSONStatus(t *testing.T) {
+	cfgPath := tree(t, testConfig+"baseline: .esorp-baseline.json\n", testSource)
+	if got := run([]string{"baseline", "update", "--allow-new", "--config", cfgPath}, io.Discard, io.Discard); got != exitOK {
+		t.Fatalf("baseline update = %d", got)
+	}
+
+	out := explainJSONOf(t, cfgPath, "a.go:6", exitViolated)
+	if out.Status != "violated" || len(out.Explanations) != 1 || !out.Explanations[0].Baselined {
+		t.Errorf("baseline が抑えていることを告げていない: %+v", out)
+	}
+
+	if s := explainJSONOf(t, cfgPath, "a.go:4", exitOK); s.Status != "conforming" || len(s.Explanations) != 0 {
+		t.Errorf("適合したコメントの status が違う: %+v", s)
+	}
+	if s := explainJSONOf(t, cfgPath, "a.go:2", exitOK); s.Status != "no-comment" || len(s.Explanations) != 0 {
+		t.Errorf("コメントの無い行の status が違う: %+v", s)
 	}
 }

@@ -100,21 +100,31 @@ func JSON(w io.Writer, res *audit.Result) error {
 		out.Skipped = []string{}
 	}
 	for _, f := range res.Findings {
-		out.Violations = append(out.Violations, jsonViolation{
-			Path:    f.Path,
-			Line:    f.Line,
-			Col:     f.Col,
-			ID:      f.ID,
-			Place:   f.Place.String(),
-			Kind:    f.Kind.String(),
-			Text:    f.Text,
-			Message: strings.TrimRight(f.Message, "\n"),
-		})
+		out.Violations = append(out.Violations, violation(f))
 	}
 
+	return encode(w, out)
+}
+
+// violation は、違反1件を機械可読の形に直す。check と explain が同じ形で出す（check の JSON で
+// 拾った違反を、そのまま explain に渡せる）。
+func violation(f audit.Finding) jsonViolation {
+	return jsonViolation{
+		Path:    f.Path,
+		Line:    f.Line,
+		Col:     f.Col,
+		ID:      f.ID,
+		Place:   f.Place.String(),
+		Kind:    f.Kind.String(),
+		Text:    f.Text,
+		Message: strings.TrimRight(f.Message, "\n"),
+	}
+}
+
+func encode(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	return enc.Encode(out)
+	return enc.Encode(v)
 }
 
 // Warnings は、検査できなかったファイルを告げる。設定の files: に当たったのに字句を持っていない

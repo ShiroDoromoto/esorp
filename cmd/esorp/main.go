@@ -56,6 +56,7 @@ check のフラグ:
 
 explain のフラグ:
   --config <path>   設定ファイルの場所（既定: esorp.yaml）
+  --format <fmt>    出力の形式（text | json、既定: text）
 
   <file>:<line> は check の報告をそのまま貼れる（桁まで付いていても受ける）。
   違反そのものに加え、それを決めた設定の該当箇所（allow の列挙 / form / rules）を指す。
@@ -136,8 +137,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	if err := fs.Parse(args); err != nil {
 		return exitConfig
 	}
-	if *format != "text" && *format != "json" {
-		fmt.Fprintf(stderr, "esorp check: --format %q は不明です（text | json）\n", *format)
+	if !knownFormat("check", *format, stderr) {
 		return exitConfig
 	}
 
@@ -188,6 +188,15 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
+// knownFormat は --format を検める。text と json のどちらでもない指定は、黙って text に落とさない。
+func knownFormat(cmd, format string, stderr io.Writer) bool {
+	if format != "text" && format != "json" {
+		fmt.Fprintf(stderr, "esorp %s: --format %q は不明です（text | json）\n", cmd, format)
+		return false
+	}
+	return true
+}
+
 // runExplain は、指し示された行のコメントについて、違反とその根拠を書く。違反を「禁止」とだけ
 // 伝えると、書き手は言い換えて再投稿する。何がその器を許していないのかまで見せて、はじめて直せる。
 // 監査そのものは check と同じ道を通り、絞り込みだけを「その行に重なるコメント」にする（--diff が
@@ -196,7 +205,11 @@ func runExplain(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("explain", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "esorp.yaml", "設定ファイルの場所")
+	format := fs.String("format", "text", "出力の形式（text | json）")
 	if err := fs.Parse(args); err != nil {
+		return exitConfig
+	}
+	if !knownFormat("explain", *format, stderr) {
 		return exitConfig
 	}
 	if fs.NArg() != 1 {
@@ -232,6 +245,17 @@ func runExplain(args []string, stdout, stderr io.Writer) int {
 	case a.result.Files == 0:
 		fmt.Fprintf(stderr, "esorp explain: %s は監査の対象ではありません（syntax.files: に当たらないか、gitignore されています）\n", rel)
 		return exitConfig
+	}
+
+	if *format == "json" {
+		if err := report.ExplainJSON(stdout, a.cfg, *configPath, rel, line, a.result, a.base); err != nil {
+			fmt.Fprintf(stderr, "esorp: %v\n", err)
+			return exitConfig
+		}
+		return explainCode(a.result)
+	}
+
+	switch {
 	case a.result.Comments == 0:
 		fmt.Fprintf(stdout, "esorp: %s:%d にコメントはありません\n", rel, line)
 		return exitOK
@@ -245,6 +269,14 @@ func runExplain(args []string, stdout, stderr io.Writer) int {
 		return exitConfig
 	}
 	return exitViolated
+}
+
+// explainCode は、説明した違反の有無を終了コードにする。形式で終了コードは変わらない。
+func explainCode(res *audit.Result) int {
+	if len(res.Findings) > 0 {
+		return exitViolated
+	}
+	return exitOK
 }
 
 // parseTarget は「<file>:<line>」を割る。check の報告（<file>:<line>:<col>）をそのまま貼れるよう、
