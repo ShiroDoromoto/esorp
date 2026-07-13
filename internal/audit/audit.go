@@ -200,15 +200,25 @@ func excludedEverywhere(cfg *config.Config, names []string, dir string) bool {
 	return true
 }
 
+// specOf は、ファイルを読む字句を決める。設定が lang: で名指ししていればそれに従い（設定が最後の
+// 真実）、無ければファイルの名前・拡張子から引き、それも空振りならエントリのファミリの既定を引く。
+// どれも引けなければ、そのファイルは読まない（検査していないことは Skipped が告げる）。
+func specOf(cfg *config.Config, m matched) (scan.LangSpec, bool) {
+	if lang := cfg.Syntax[m.syntax].Lang; lang != "" {
+		return scan.SpecByName(lang)
+	}
+	if spec, ok := scan.SpecFor(m.path); ok {
+		return spec, true
+	}
+	return scan.FamilySpec(cfg.FamilyOf(m.syntax))
+}
+
 // auditFile は、ファイル1つを読み、検査して違反を Result に足す。同じ本文の同じ違反が1つの
 // ファイルに何度も現れる（型の全フィールドに付いた同じ行末コメントなど）ため、baseline のキーは
 // 出現順で区別する。sel で落ちるコメントも照合までは回し、出現順だけ進めて報告しない。ここを
 // 飛ばすと、同じ違反のキーが check と check --diff で食い違い、baseline が効かなくなる。
 func auditFile(cfg *config.Config, root string, m matched, sel Selection, res *Result) error {
-	spec, ok := scan.SpecFor(m.path)
-	if !ok {
-		spec, ok = scan.FamilySpec(cfg.FamilyOf(m.syntax))
-	}
+	spec, ok := specOf(cfg, m)
 	if !ok {
 		res.Skipped = append(res.Skipped, m.path)
 		return nil

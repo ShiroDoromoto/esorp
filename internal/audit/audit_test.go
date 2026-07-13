@@ -171,6 +171,28 @@ func TestRunFamilyFallback(t *testing.T) {
 	}
 }
 
+// TestRunLang は、設定が字句を名指しできること（lang:）を確かめる。拡張子も既知の名前も持たない
+// C 系のファイルは、これでしか読めない（cstyle は既定の字句を持たない）。名指しは拡張子より先に
+// 効くので、.yml をシェルとして読ませれば、YAML なら文字列（ブロックスカラー）の中身がコメントに
+// なる——設定が最後の真実であることを、この食い違いで押さえる。
+func TestRunLang(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "esorp.yaml", "syntax:\n"+
+		"  gen:\n    family: cstyle\n    lang: go\n    files: [\"tools/gen\"]\n    mode: content-only\n"+
+		"  script:\n    family: hash\n    lang: shell\n    files: [\"**/*.yml\"]\n    mode: content-only\n"+historyRule)
+
+	write(t, root, "tools/gen", "package main // かつてはこうだった\n")
+	write(t, root, "ci.yml", "run: |\n  # かつてはこうだった\n")
+
+	res := run(t, root)
+	if len(res.Skipped) > 0 {
+		t.Errorf("字句を引けなかったファイル = %v", res.Skipped)
+	}
+	if got := ids(res); len(got) != 2 {
+		t.Errorf("違反 = %v（%#v）, want 2 ファイルに1件ずつ", got, res.Findings)
+	}
+}
+
 // TestRunLexiconWherePath は、where.path が files: と同じ照合（! 始まりで除外）を通ることを確かめる。
 func TestRunLexiconWherePath(t *testing.T) {
 	root := t.TempDir()

@@ -136,6 +136,16 @@ func TestLoadErrors(t *testing.T) {
 			want: "スキャナがありません",
 		},
 		{
+			name: "無い字句を名指しする lang",
+			body: "syntax:\n  cstyle:\n    lang: golang\n    files: [\"**/*.go\"]\n    mode: content-only\n",
+			want: "という字句はありません",
+		},
+		{
+			name: "ファミリと食い違う lang",
+			body: "syntax:\n  hash:\n    lang: go\n    files: [\"**/*.sh\"]\n    mode: content-only\n",
+			want: "食い違います",
+		},
+		{
 			name: "content-only に allow は書けない",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: content-only\n    allow:\n      - place: doc\n",
 			want: "content-only",
