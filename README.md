@@ -1,0 +1,224 @@
+# esorp
+
+コメントの置き場所と書式を、`esorp.yaml` の宣言に照らして監査する。
+
+落とそうとしているのは、目の前のコードの説明ではないコメントです。履歴（「以前はこうだった」）、
+事情（「議論の結果こうした」）、作業メモ（課題番号、次にやること）。これらは書かれた瞬間から
+陳腐化を始めます。コードは変わってもコメントは追随せず、残ったコメントが将来の読み手
+（次の AI エージェントを含む）をミスリードします。
+
+散文の規約（CONTRIBUTING に「履歴を書くな」と書く）では止まりません。エージェントは規約を読んで
+なお書きます。機械的に落とす以外に手がない、というのが esorp の前提です。
+
+## 三層
+
+| 層 | 見るもの | 決定論的か | 誰が答えるか |
+| --- | --- | --- | --- |
+| **層1: 器と書式** | コメントが**どこに**入っているか、どんな**形**をしているか | する | esorp（CI と pre-commit がそのまま赤/緑にする） |
+| 層2: 語彙 | コメント本文に現れる、プロジェクト固有の専用句 | する | esorp。ただしルールを書くのはあなた（ツールは既定を持たない） |
+| 層3: 意味 | 層1・層2 を通り抜けたコメントが、コードの説明か、事情・履歴・作業メモか | しない | esorp を走らせている**エージェント自身**（[層3](#層3--エージェントが答える) 参照） |
+
+層1 は言語仕様から導けるので、プロジェクトに依存しません。層2・層3 は機械判定できないプロジェクト
+固有の都合であり、ツールが既定を持つ資格がありません。
+
+**esorp は「書けるものを減らす」方向しか持ちません。** `@param` を書け・doc を書け、と足す方向は
+既存の doc lint（checkstyle、eslint 系、`missing_docs`）の領分です。
+
+## 入れる
+
+```sh
+# インストールスクリプト（macOS / Linux）
+curl -fsSL https://github.com/ShiroDoromoto/esorp/releases/latest/download/install.sh | sh
+
+# Homebrew
+brew install ShiroDoromoto/esorp/esorp
+
+# Scoop（Windows）
+scoop bucket add esorp https://github.com/ShiroDoromoto/scoop-esorp
+scoop install esorp
+
+# Go
+go install github.com/ShiroDoromoto/esorp/cmd/esorp@latest
+```
+
+Debian / RPM 系のパッケージは [Gemfury](https://fury.io) から出ています
+（`https://apt.fury.io/shirodoromoto/` / `https://yum.fury.io/shirodoromoto/`）。
+
+## 使う
+
+```sh
+esorp init                    # 設定ファイル（esorp.yaml）を生成する
+esorp check                   # ツリー全体を監査する
+esorp check --diff [<ref>]    # 変更分だけを監査する（既定の <ref> は origin/HEAD）
+esorp explain <file>:<line>   # その行が、なぜ違反で、どう始末するのかを説明する
+esorp baseline update         # 今ある違反をスナップショットする（減る方向のみ）
+esorp agent                   # エージェント向けの入口
+```
+
+導入初日は、既存コードの違反が大量に出ます。全部直すのは現実的ではないので、いったん凍結します。
+
+```sh
+esorp baseline update --allow-new   # 今ある違反を baseline に載せる（以後は報告されない）
+```
+
+baseline はラチェットです。**減る方向にしか動きません** — 直した違反は落ち、新しい違反は載りません。
+抑えている件数は毎回の出力に出るので、隠れることはありません。
+
+**インライン抑制コメント（`// esorp:ignore`）はありません。** 抑制コメント自体が「許可されていない
+器のコメント」になって自己矛盾しますし、違反を消す代わりに抑制を足す抜け道になります。例外は
+baseline に載せます（＝一覧として見える状態にする）。
+
+終了コードは `0` 適合 / `1` 違反あり / `2` 設定エラーの3値です。
+
+## pre-commit
+
+[pre-commit](https://pre-commit.com) から呼べます。`.pre-commit-config.yaml` に書きます。
+
+```yaml
+repos:
+  - repo: https://github.com/ShiroDoromoto/esorp
+    rev: v0.1.0
+    hooks:
+      - id: esorp
+```
+
+見るのは HEAD から作業ツリーまでに増えた行に重なるコメントだけです。既にあった違反は素通しします
+（それは baseline の仕事）。コミットのたびにツリー全体を見たいなら `args: [check]` で上書きします。
+
+## GitHub Action
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0        # --diff は分岐点を取る。浅いクローンでは取れない
+- uses: ShiroDoromoto/esorp@v0.1.0
+```
+
+引数を渡さなければ、pull request では変更分だけを（`check --diff origin/<base>`）、それ以外では
+ツリー全体を（`check`）見ます。`with: {args: "check"}` で上書きできます。
+
+## esorp.yaml の要点
+
+`esorp init` が生成した設定は、その時点であなたのものです。**esorp が勝手に書き換えることはありません。**
+ツールを更新しても既定は変わりません。既定ルールの改善は `esorp init --diff` から見て、取り込むか
+どうかをあなたが決めます（`--format json` で機械可読にも出ます）。
+
+### 層1 — 器と書式
+
+```yaml
+syntax:
+  cstyle:
+    files: ["**/*.go", "**/*.rs", "**/*.ts"]
+    mode: structural
+
+    # 許可する「器」。ここに列挙されていない器のコメントは、中身が何であれ違反
+    allow:
+      - place: header               # ファイル冒頭（ライセンス等）
+      - place: doc                  # 宣言に紐づく説明
+        form:                       # 器の中の「形」。語彙は見ない
+          subject: required         # 1行目が、紐づく宣言の名前で始まること
+          headings: deny            # 見出しを書けない（履歴は見出しを付けて書かれる）
+          paragraphs: 1             # 段落は1つ（背景を段落として付け足せない）
+          refs: deny                # #123 形式の追跡番号への参照を書けない
+      - place: trailing             # 行末。ラベル必須
+        label: ["SAFETY:", "TODO:"]
+    # place: leading / orphan は列挙していない ＝ 許可しない
+```
+
+器は `header` / `doc` / `leading` / `trailing` / `orphan` の5つ。`mode: structural` は器を見る
+モードで、`content-only` は器の概念が無いファイル（YAML、シェル、Markdown）に使います
+（コメントが1種類しかないので、器の列挙が選択の軸として働かない）。
+
+拡張子も既知の名前も持たないファイル（生成物、フック）は、字句を名指しできます。
+
+```yaml
+syntax:
+  gen:
+    family: cstyle
+    lang: go            # 字句を名指しする（省略時は拡張子・名前から引く）
+    files: ["tools/gen"]
+```
+
+書ける名前は go / rust / typescript / tsx / javascript / jsx / css / sgml / shell / yaml / toml /
+make / dockerfile / gitignore / powershell。ファミリと食い違う `lang:` は設定エラーです。
+
+### 層2 — 語彙
+
+```yaml
+rules:
+  - id: no-history
+    pattern: "(?i)no longer|used to|かつて|従来"
+    message: |
+      変化を語っています。今のコードが何であるかだけを書いてください。
+    where:
+      syntax: [cstyle, hash]
+```
+
+**ツールは既定の語彙を持ちません。** 文字列マッチは必ず誤検知します。実在のリポジトリ1件
+（285ファイル / 13,186コメント）で測ったところ、`no longer` / `used to` / `かつて` / `従来` の
+156件はほぼ全部が本当に履歴でした。一方 `before`（209件）・`old`（138件）はほぼ全部が偽陽性
+（「〜する前に」「古い方の値」という正当な説明）です。**誤検知するガードは例外指定を誘発し、やがて
+ツールごと無視されます。** 足すなら「変化を指す専用句」だけに絞ってください。
+
+### 層3 — エージェントが答える
+
+```yaml
+review:
+  question: |
+    このコメントは、目の前のコードの説明ですか。それとも、事情・履歴・作業メモですか。
+    後者なら削除してください（履歴はバージョン管理が保持しています）。
+```
+
+**esorp は LLM を呼びません。** API キーも課金もネットワークも要りません。層3 は、層1・層2 を
+通り抜けたコメントを、変更分に絞って機械可読で渡し、この問いを添えるだけの口です。答えるのは
+**esorp を走らせているエージェント自身**です。
+
+```sh
+esorp check --diff --format json
+```
+
+設定に `review:` があり、かつ `--diff --format json` のときだけ、出力に `review` が乗ります。
+
+```json
+{
+  "review": {
+    "question": "このコメントは、目の前のコードの説明ですか。…",
+    "comments": [
+      {"path": "internal/scan/scan.go", "line": 42, "col": 1,
+       "place": "doc", "kind": "line", "text": "// …"}
+    ]
+  }
+}
+```
+
+**層3 は CI の赤/緑を変えません。** 判定は非決定的なので、そこに CI を賭けません。CI は層1・層2 の
+決定論だけで完結します（オフライン・再現可能）。器も形も正しく、専用句も使っていないのに事情を
+語っているコメントは、意味を読まなければ分かりません。その網は、コードを書いているエージェント
+自身にしか張れません。
+
+問いは**二値で答えられる**ものにしてください。カテゴリ（履歴 / 作業メモ / 判断）に分けさせると、
+決定論で解けなかった分類問題を、確率的な機械に押し付けることになります。
+
+## エージェントに使わせる
+
+`AGENTS.md` / `CLAUDE.md` に「このリポジトリでは esorp を使う。まず `esorp agent` を読め」と
+書いてください。エージェントは、そこから層3 に辿り着けます。
+
+```sh
+esorp agent                 # 三層・サイクル・コマンド・出力の読み方・終了コードを散文で出す
+esorp agent --format json   # 同じ地図を機械可読で出す
+```
+
+## やらないこと
+
+| やらないこと | 理由 |
+| --- | --- |
+| コメントの自動生成・自動書き換え | 監査に徹する。書き換えは失敗時の被害が大きい |
+| コメントを「行き先」へ自動移送すること | 行き先はツールの外側にある。そもそも違反コメントの大半に行き先など無く、正解は削除 |
+| インライン抑制コメント | 自己矛盾するし、抜け道になる。例外は baseline に載せる |
+| doc コメントに必須セクションを強制すること | 既存の言語固有 lint の領分 |
+| 文体・語法のチェック | [vale](https://vale.sh) の領分 |
+
+## ライセンス
+
+Apache-2.0
