@@ -6,10 +6,31 @@ import (
 	"strings"
 )
 
-// Section は差分の1かたまり。見出しと、その下に並ぶ行。
+// Section は差分の1かたまり。見出しと、その下に並ぶ差分。
 type Section struct {
-	Title string
-	Lines []string
+	Title   string
+	Changes []Change
+}
+
+// Change は差分1つ。Key は設定の該当箇所まで辿れる名前（syntax.cstyle.allow[doc].kind）で、
+// Local / Tmpl はその値、Only は片方にしか無いこと（"local" / "template"）、Text は人向けの1行。
+// 組み立て済みの文だけにせず、キーと値に分けて持つのは、差分を読むのが人とはかぎらないため
+// （取り込むかどうかを決めるのは相変わらず読み手で、esorp は設定を書き換えない）。
+type Change struct {
+	Key   string
+	Local string
+	Tmpl  string
+	Only  string
+	Text  string
+}
+
+// Lines は、このかたまりの差分を人向けの行にする。
+func (s Section) Lines() []string {
+	out := make([]string, 0, len(s.Changes))
+	for _, c := range s.Changes {
+		out = append(out, c.Text)
+	}
+	return out
 }
 
 // Diff は、現行テンプレートと手元の設定の差分を返す。空なら差分なし。設定は生成された時点で
@@ -22,59 +43,77 @@ func Diff(local, tmpl *Config) []Section {
 
 	pairs, onlyTmpl, onlyLocal := pairSyntax(local, tmpl)
 	for _, p := range pairs {
-		lines := diffSyntax(local.Syntax[p.local], tmpl.Syntax[p.tmpl])
-		if len(lines) == 0 {
+		changes := diffSyntax("syntax."+p.local, local.Syntax[p.local], tmpl.Syntax[p.tmpl])
+		if len(changes) == 0 {
 			continue
 		}
 		title := fmt.Sprintf("syntax.%s（テンプレートの %s と対応）", p.local, p.tmpl)
-		out = append(out, Section{Title: title, Lines: lines})
+		out = append(out, Section{Title: title, Changes: changes})
 	}
 
 	if len(onlyTmpl) > 0 {
-		var lines []string
-		for _, name := range onlyTmpl {
-			lines = append(lines, fmt.Sprintf("%s: %s", name, strings.Join(tmpl.Syntax[name].Files, " ")))
-		}
 		out = append(out, Section{
-			Title: "テンプレートだけにある syntax エントリ（使わない言語なら、無いままで構いません）",
-			Lines: lines,
+			Title:   "テンプレートだけにある syntax エントリ（使わない言語なら、無いままで構いません）",
+			Changes: onlySyntax(tmpl, onlyTmpl, "template"),
 		})
 	}
 	if len(onlyLocal) > 0 {
-		var lines []string
-		for _, name := range onlyLocal {
-			lines = append(lines, fmt.Sprintf("%s: %s", name, strings.Join(local.Syntax[name].Files, " ")))
-		}
 		out = append(out, Section{
-			Title: "手元だけにある syntax エントリ（あなたが足したもの）",
-			Lines: lines,
+			Title:   "手元だけにある syntax エントリ（あなたが足したもの）",
+			Changes: onlySyntax(local, onlyLocal, "local"),
 		})
 	}
 
-	if lines := diffFiles(local, tmpl); len(lines) > 0 {
-		out = append(out, Section{Title: "見にいくファイル", Lines: lines})
+	if changes := diffFiles(local, tmpl); len(changes) > 0 {
+		out = append(out, Section{Title: "見にいくファイル", Changes: changes})
 	}
 
-	if lines := diffMap(local.Disposition, tmpl.Disposition); len(lines) > 0 {
-		out = append(out, Section{Title: "disposition（違反時に提示する始末のしかた）", Lines: lines})
+	if changes := diffMap("disposition", local.Disposition, tmpl.Disposition); len(changes) > 0 {
+		out = append(out, Section{Title: "disposition（違反時に提示する始末のしかた）", Changes: changes})
 	}
-	if lines := diffRules(local.Rules, tmpl.Rules); len(lines) > 0 {
-		out = append(out, Section{Title: "rules（層2 の語彙。テンプレートは既定を持たない）", Lines: lines})
+	if changes := diffRules(local.Rules, tmpl.Rules); len(changes) > 0 {
+		out = append(out, Section{Title: "rules（層2 の語彙。テンプレートは既定を持たない）", Changes: changes})
 	}
 
-	var misc []string
+	var misc []Change
 	if local.RespectGitignore != tmpl.RespectGitignore {
-		misc = append(misc, field("respect_gitignore",
+		misc = append(misc, changed("respect_gitignore", "respect_gitignore",
 			fmt.Sprint(local.RespectGitignore), fmt.Sprint(tmpl.RespectGitignore)))
 	}
 	if local.Baseline != tmpl.Baseline {
-		misc = append(misc, field("baseline", local.Baseline, tmpl.Baseline))
+		misc = append(misc, changed("baseline", "baseline", local.Baseline, tmpl.Baseline))
 	}
 	if len(misc) > 0 {
-		out = append(out, Section{Title: "その他", Lines: misc})
+		out = append(out, Section{Title: "その他", Changes: misc})
 	}
 
 	return out
+}
+
+// changed は、両方にあって値が違う項目の Change。key は設定の該当箇所まで辿れる名前、label は
+// 人向けの1行に出す短い名前（見出しがエントリを名乗っているので、行では繰り返さない）。
+func changed(key, label, local, tmpl string) Change {
+	return Change{Key: key, Local: local, Tmpl: tmpl, Text: field(label, local, tmpl)}
+}
+
+// onlySyntax は、片方にしかない syntax エントリの Change。値はそのエントリが見にいくファイル。
+func onlySyntax(c *Config, entries []string, only string) []Change {
+	changes := make([]Change, 0, len(entries))
+	for _, name := range entries {
+		files := strings.Join(c.Syntax[name].Files, " ")
+		ch := Change{
+			Key:  "syntax." + name,
+			Only: only,
+			Text: fmt.Sprintf("%s: %s", name, files),
+		}
+		if only == "local" {
+			ch.Local = files
+		} else {
+			ch.Tmpl = files
+		}
+		changes = append(changes, ch)
+	}
+	return changes
 }
 
 // pair は、対応づいた syntax エントリの組。
@@ -133,7 +172,7 @@ func overlaps(a, b []string) bool {
 // diffFiles は、見にいくファイルの差を設定の全体で1回だけ出す。エントリごとに出すと、手元の1本が
 // 複数のテンプレートエントリを兼ねているとき（cstyle が go / rust / ts を1本で見ている）、他の
 // エントリが拾っている glob まで「手元だけ」「テンプレートだけ」として何度も並び、読めなくなる。
-func diffFiles(local, tmpl *Config) []string {
+func diffFiles(local, tmpl *Config) []Change {
 	globs := func(c *Config) []string {
 		var out []string
 		for _, name := range names(c.Syntax) {
@@ -147,50 +186,75 @@ func diffFiles(local, tmpl *Config) []string {
 	}
 
 	add, del := setDiff(globs(local), globs(tmpl))
-	var lines []string
+	var changes []Change
 	if len(add) > 0 {
-		lines = append(lines, "テンプレートだけ: "+strings.Join(add, " "))
+		changes = append(changes, Change{
+			Key:  "files",
+			Only: "template",
+			Tmpl: strings.Join(add, " "),
+			Text: "テンプレートだけ: " + strings.Join(add, " "),
+		})
 	}
 	if len(del) > 0 {
-		lines = append(lines, "手元だけ: "+strings.Join(del, " "))
+		changes = append(changes, Change{
+			Key:   "files",
+			Only:  "local",
+			Local: strings.Join(del, " "),
+			Text:  "手元だけ: " + strings.Join(del, " "),
+		})
 	}
-	return lines
+	return changes
 }
 
-func diffSyntax(l, t Syntax) []string {
-	var lines []string
+func diffSyntax(key string, l, t Syntax) []Change {
+	var changes []Change
 
 	if l.Mode != t.Mode {
-		lines = append(lines, field("mode", l.Mode, t.Mode))
+		changes = append(changes, changed(key+".mode", "mode", l.Mode, t.Mode))
 	}
 	if l.Lang != t.Lang {
-		lines = append(lines, field("lang", l.Lang, t.Lang))
+		changes = append(changes, changed(key+".lang", "lang", l.Lang, t.Lang))
 	}
 
 	lp, tp := byPlace(l.Allow), byPlace(t.Allow)
 	for _, p := range places(lp, tp) {
 		la, inLocal := lp[p]
 		ta, inTmpl := tp[p]
+		allow := fmt.Sprintf("allow[%s]", p)
 		switch {
 		case !inLocal:
-			lines = append(lines, fmt.Sprintf("allow[%s]  テンプレートだけにあります（この器を許可していません）", p))
+			changes = append(changes, Change{
+				Key:  key + "." + allow,
+				Only: "template",
+				Text: allow + "  テンプレートだけにあります（この器を許可していません）",
+			})
 		case !inTmpl:
-			lines = append(lines, fmt.Sprintf("allow[%s]  手元だけにあります（テンプレートは、この器を許可しません）", p))
+			changes = append(changes, Change{
+				Key:  key + "." + allow,
+				Only: "local",
+				Text: allow + "  手元だけにあります（テンプレートは、この器を許可しません）",
+			})
 		default:
-			lines = append(lines, diffAllow(p, la, ta)...)
+			changes = append(changes, diffAllow(key, p, la, ta)...)
 		}
 	}
-	return lines
+	return changes
 }
 
-func diffAllow(p string, l, t Allow) []string {
-	var lines []string
+func diffAllow(key, p string, l, t Allow) []Change {
+	var changes []Change
+	at := func(name string) (string, string) {
+		label := fmt.Sprintf("allow[%s].%s", p, name)
+		return key + "." + label, label
+	}
 
 	if add, del := setDiff(l.Kind, t.Kind); len(add) > 0 || len(del) > 0 {
-		lines = append(lines, field(fmt.Sprintf("allow[%s].kind", p), list(l.Kind), list(t.Kind)))
+		k, label := at("kind")
+		changes = append(changes, changed(k, label, list(l.Kind), list(t.Kind)))
 	}
 	if add, del := setDiff(l.Label, t.Label); len(add) > 0 || len(del) > 0 {
-		lines = append(lines, field(fmt.Sprintf("allow[%s].label", p), list(l.Label), list(t.Label)))
+		k, label := at("label")
+		changes = append(changes, changed(k, label, list(l.Label), list(t.Label)))
 	}
 
 	lf, tf := l.Form, t.Form
@@ -201,9 +265,8 @@ func diffAllow(p string, l, t Allow) []string {
 		tf = &Form{}
 	}
 	for _, f := range []struct {
-		name    string
-		l, t    string
-		isEmpty bool
+		name string
+		l, t string
 	}{
 		{name: "subject", l: lf.Subject, t: tf.Subject},
 		{name: "headings", l: lf.Headings, t: tf.Headings},
@@ -213,14 +276,16 @@ func diffAllow(p string, l, t Allow) []string {
 		{name: "max_lines", l: num(lf.MaxLines), t: num(tf.MaxLines)},
 	} {
 		if f.l != f.t {
-			lines = append(lines, field(fmt.Sprintf("allow[%s].form.%s", p, f.name), f.l, f.t))
+			k, label := at("form." + f.name)
+			changes = append(changes, changed(k, label, f.l, f.t))
 		}
 	}
-	return lines
+	return changes
 }
 
-func diffMap(l, t map[string]string) []string {
-	var lines []string
+// diffMap は、文言の差を「違う」とだけ告げる。中身まで並べないのは、disposition が段落で書かれる
+// ためで、両方を全文並べても読めない。
+func diffMap(key string, l, t map[string]string) []Change {
 	seen := map[string]bool{}
 	var keys []string
 	for k := range l {
@@ -234,24 +299,29 @@ func diffMap(l, t map[string]string) []string {
 	}
 	sort.Strings(keys)
 
+	var changes []Change
 	for _, k := range keys {
 		lv, tv := strings.TrimSpace(l[k]), strings.TrimSpace(t[k])
 		if lv == tv {
 			continue
 		}
+		ch := Change{Key: key + "." + k, Local: lv, Tmpl: tv}
 		switch {
 		case lv == "":
-			lines = append(lines, fmt.Sprintf("%s  テンプレートだけにあります", k))
+			ch.Only = "template"
+			ch.Text = fmt.Sprintf("%s  テンプレートだけにあります", k)
 		case tv == "":
-			lines = append(lines, fmt.Sprintf("%s  手元だけにあります", k))
+			ch.Only = "local"
+			ch.Text = fmt.Sprintf("%s  手元だけにあります", k)
 		default:
-			lines = append(lines, fmt.Sprintf("%s  文言が違います", k))
+			ch.Text = fmt.Sprintf("%s  文言が違います", k)
 		}
+		changes = append(changes, ch)
 	}
-	return lines
+	return changes
 }
 
-func diffRules(l, t []Rule) []string {
+func diffRules(l, t []Rule) []Change {
 	byID := func(rs []Rule) map[string]Rule {
 		m := map[string]Rule{}
 		for _, r := range rs {
@@ -261,23 +331,33 @@ func diffRules(l, t []Rule) []string {
 	}
 	lm, tm := byID(l), byID(t)
 
-	var lines []string
+	var changes []Change
 	for _, r := range t {
 		if _, ok := lm[r.ID]; !ok {
-			lines = append(lines, fmt.Sprintf("%s  テンプレートだけにあります: %s", r.ID, r.Pattern))
+			changes = append(changes, Change{
+				Key:  "rules." + r.ID,
+				Only: "template",
+				Tmpl: r.Pattern,
+				Text: fmt.Sprintf("%s  テンプレートだけにあります: %s", r.ID, r.Pattern),
+			})
 		}
 	}
 	for _, r := range l {
 		tr, ok := tm[r.ID]
 		if !ok {
-			lines = append(lines, fmt.Sprintf("%s  手元だけにあります（あなたの選択）: %s", r.ID, r.Pattern))
+			changes = append(changes, Change{
+				Key:   "rules." + r.ID,
+				Only:  "local",
+				Local: r.Pattern,
+				Text:  fmt.Sprintf("%s  手元だけにあります（あなたの選択）: %s", r.ID, r.Pattern),
+			})
 			continue
 		}
 		if tr.Pattern != r.Pattern {
-			lines = append(lines, field(r.ID+".pattern", r.Pattern, tr.Pattern))
+			changes = append(changes, changed("rules."+r.ID+".pattern", r.ID+".pattern", r.Pattern, tr.Pattern))
 		}
 	}
-	return lines
+	return changes
 }
 
 // field は、1つの値の差を「手元 / テンプレート」の並びで出す。空の値は「（無し）」と書く——

@@ -844,3 +844,104 @@ func TestInitDiffNoConfig(t *testing.T) {
 		t.Fatalf("init --diff（設定なし） = %d, want %d", got, exitConfig)
 	}
 }
+
+// TestInitDiffJSON は、差分が機械可読で出ること——どのキーが手元とテンプレートで何と何か、まで
+// 引けることを押さえる（差分を読むのは人とはかぎらない）。引くのは、テンプレートだけが持つ項目・
+// 両方にあって値が違う項目・テンプレートにしか無いエントリの3つ。
+func TestInitDiffJSON(t *testing.T) {
+	cfgPath := tree(t, testConfig, "")
+
+	var out strings.Builder
+	if got := run([]string{"init", "--config", cfgPath, "--diff", "--format", "json"}, &out, io.Discard); got != exitOK {
+		t.Fatalf("init --diff --format json = %d, want %d\n%s", got, exitOK, out.String())
+	}
+
+	var got struct {
+		Version  int    `json:"version"`
+		Config   string `json:"config"`
+		Same     bool   `json:"same"`
+		Sections []struct {
+			Title   string `json:"title"`
+			Changes []struct {
+				Key   string `json:"key"`
+				Local string `json:"local"`
+				Tmpl  string `json:"template"`
+				Only  string `json:"only"`
+				Text  string `json:"text"`
+			} `json:"changes"`
+		} `json:"sections"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
+		t.Fatalf("JSON が読めない: %v\n%s", err, out.String())
+	}
+
+	if got.Version != 1 || got.Config != cfgPath {
+		t.Errorf("version = %d, config = %q", got.Version, got.Config)
+	}
+	if got.Same || len(got.Sections) == 0 {
+		t.Fatalf("same = %v, sections = %d（差分があるはず）", got.Same, len(got.Sections))
+	}
+
+	type change struct{ local, tmpl, only string }
+	changes := map[string]change{}
+	for _, s := range got.Sections {
+		for _, c := range s.Changes {
+			if c.Key == "" || c.Text == "" {
+				t.Errorf("キーか行が空の差分がある: %+v", c)
+			}
+			changes[c.Key] = change{local: c.Local, tmpl: c.Tmpl, only: c.Only}
+		}
+	}
+
+	for _, want := range []struct {
+		key string
+		change
+	}{
+		{key: "syntax.cstyle.allow[doc].form.subject", change: change{tmpl: "required"}},
+		{key: "syntax.cstyle.allow[trailing].label", change: change{local: "[TODO:]", tmpl: "[SAFETY: TODO: nolint:]"}},
+		{key: "syntax.sgml", change: change{tmpl: "**/*.md **/*.html **/*.svg", only: "template"}},
+	} {
+		if got, ok := changes[want.key]; !ok || got != want.change {
+			t.Errorf("%s = %+v, ある = %v; want %+v", want.key, got, ok, want.change)
+		}
+	}
+}
+
+// TestInitDiffJSONSame は、テンプレートと同じ設定なら same: true で、差分が空になることを押さえる。
+// 「差分なし」を、機械が読める形で告げられなければ、JSON の口として用を成さない。
+func TestInitDiffJSONSame(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "esorp.yaml")
+	if got := run([]string{"init", "--config", cfgPath}, io.Discard, io.Discard); got != exitOK {
+		t.Fatalf("init = %d, want %d", got, exitOK)
+	}
+
+	var out strings.Builder
+	if got := run([]string{"init", "--config", cfgPath, "--diff", "--format", "json"}, &out, io.Discard); got != exitOK {
+		t.Fatalf("init --diff --format json = %d, want %d", got, exitOK)
+	}
+
+	var got struct {
+		Same     bool       `json:"same"`
+		Sections []struct{} `json:"sections"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
+		t.Fatalf("JSON が読めない: %v\n%s", err, out.String())
+	}
+	if !got.Same || len(got.Sections) != 0 {
+		t.Errorf("same = %v, sections = %d; want true, 0", got.Same, len(got.Sections))
+	}
+}
+
+// TestInitFormatWithoutDiff は、--format が --diff の出力の形式であることを押さえる。設定の生成は
+// 書くだけで出力を持たないので、黙って受け取ると、JSON が返ると思った呼び手が空を掴む。
+func TestInitFormatWithoutDiff(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "esorp.yaml")
+
+	var errOut strings.Builder
+	if got := run([]string{"init", "--config", cfgPath, "--format", "json"}, io.Discard, &errOut); got != exitConfig {
+		t.Fatalf("init --format json（--diff 無し） = %d, want %d", got, exitConfig)
+	}
+	if _, err := os.Stat(cfgPath); err == nil {
+		t.Error("設定を書いてしまった（フラグを撥ねたなら、何もしない）")
+	}
+}

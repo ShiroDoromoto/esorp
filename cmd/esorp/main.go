@@ -50,6 +50,7 @@ init のフラグ:
   --diff            現行テンプレートと手元の設定の差分を見せる。設定は生成された時点で
                     あなたのものなので、ツールを更新しても勝手には変わらない。既定ルールの
                     改善は、この口から見て、取り込むかどうかを自分で決める
+  --format <fmt>    --diff の出力の形式（text | json、既定: text）
 
 check のフラグ:
   --config <path>   設定ファイルの場所（既定: esorp.yaml）。この場所がツリーの根になる
@@ -112,6 +113,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	configPath := fs.String("config", "esorp.yaml", "生成する場所")
 	force := fs.Bool("force", false, "既にある設定ファイルを上書きする")
 	diffMode := fs.Bool("diff", false, "現行テンプレートと手元の設定の差分を見せる")
+	format := fs.String("format", "text", "差分の出力の形式（text | json）")
 	if err := fs.Parse(args); err != nil {
 		return exitConfig
 	}
@@ -119,8 +121,15 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "esorp init: 余分な引数 %q（生成する場所は --config で指定します）\n", fs.Arg(0))
 		return exitConfig
 	}
+	if !knownFormat("init", *format, stderr) {
+		return exitConfig
+	}
 	if *diffMode {
-		return runInitDiff(*configPath, stdout, stderr)
+		return runInitDiff(*configPath, *format, stdout, stderr)
+	}
+	if *format != "text" {
+		fmt.Fprintf(stderr, "esorp init: --format は --diff の出力の形式です（設定の生成は書くだけで、出力を持ちません）\n")
+		return exitConfig
 	}
 
 	if _, err := os.Stat(*configPath); err == nil && !*force {
@@ -139,7 +148,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 // runInitDiff は、現行テンプレートと手元の設定の差分を見せる。設定は生成された時点でユーザーのもの
 // なので、ツールを更新しても勝手には変わらない。既定ルールの改善を届ける口はここだけで、取り込むか
 // どうかはユーザーが決める。差分があっても、それは違反ではないので 0 で終わる。
-func runInitDiff(configPath string, stdout, stderr io.Writer) int {
+func runInitDiff(configPath, format string, stdout, stderr io.Writer) int {
 	local, err := config.Load(configPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "esorp: %v\n", err)
@@ -152,6 +161,14 @@ func runInitDiff(configPath string, stdout, stderr io.Writer) int {
 	}
 
 	sections := config.Diff(local, tmpl)
+	if format == "json" {
+		if err := report.DiffJSON(stdout, configPath, sections); err != nil {
+			fmt.Fprintf(stderr, "esorp: %v\n", err)
+			return exitConfig
+		}
+		return exitOK
+	}
+
 	if len(sections) == 0 {
 		fmt.Fprintf(stdout, "esorp: %s は現行テンプレートと同じです\n", configPath)
 		return exitOK
@@ -160,7 +177,7 @@ func runInitDiff(configPath string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "%s と現行テンプレートの差分です。\n", configPath)
 	for _, s := range sections {
 		fmt.Fprintf(stdout, "\n%s\n", s.Title)
-		for _, line := range s.Lines {
+		for _, line := range s.Lines() {
 			fmt.Fprintf(stdout, "  %s\n", line)
 		}
 	}
