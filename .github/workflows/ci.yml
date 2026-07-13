@@ -43,3 +43,18 @@ jobs:
             echo "==> $target"
             GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./cmd/esorp
           done
+
+  # ワークフローと action.yml の壊れは、目で見ても出てこない。action の metadata は
+  # 走らせても黙って通り、Marketplace の見た目になって初めて分かる（branding.color の
+  # 取りうる色は決まっている）。Go とは無関係なので別 job に置き、check の緑を待たせない。
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ワークフロー3本と、uses: ./ から辿られる action.yml をまとめて見る。
+      # run: の中身は shellcheck に掛かる（ubuntu-latest に入っている）。
+      - name: actionlint
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash
+          ./actionlint -color
