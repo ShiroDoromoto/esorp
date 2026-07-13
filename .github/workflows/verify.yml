@@ -40,9 +40,8 @@ jobs:
   # verify とは別の job に置く。同じ job だと wharfy が入れた esorp が PATH に残り、
   # action 自身が入れられたのかどうかが見分けられない。
   #
-  # ここで見ていないもの: pull_request のときの分岐（esorp check --diff origin/<base>）。
-  # GITHUB_BASE_REF は PR でしか埋まらず、このリポジトリは PR を通さない。そこだけは
-  # 使い捨てのリポジトリで見るしかない。
+  # ここで通すのは、引数を渡さない2分岐（既定 / args 指定）。変更分だけを見る分岐は
+  # 比較先の枝が要るので、action-pull-request に分けてある。
   action:
     runs-on: ubuntu-latest
     steps:
@@ -218,9 +217,6 @@ jobs:
   # 通る道だが、このリポジトリは PR を通さないので、実物の PR は起きない。比較先の枝を base
   # 入力で名指しすれば、同じ道をそのまま通せる（action がこの入力を持つのは、そのため）。
   #
-  # ここだけタグに合わせない。base 入力は配った版（v0.2.0）にまだ無く、タグの action を
-  # 呼んでも無視されてツリー全体を見る側へ落ちるため。次の版を配ったらタグへ向け直す。
-  #
   # 通ったことをどう知るか。緑になるだけでは足りない —— base が届かず、ツリー全体を見る側へ
   # 落ちても緑にはなる。そこで「分岐点の側に、まだ直していない違反を1つ置く」。ツリー全体を
   # 見れば捕まり、変更分だけを見れば見逃す違反。この job が緑なら、見たのは変更分だけだった。
@@ -231,6 +227,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: 直近のタグに合わせる
+        run: |
+          tag=$(git describe --tags --abbrev=0)
+          echo "確かめる版: $tag"
+          git checkout --detach "$tag"
+
+      # detach した先で fixture のコミットを積む。分岐点は、この job が置いたものになる。
       - name: PR の形をこしらえる
         run: |
           set -eu
