@@ -424,3 +424,199 @@ func TestInitDoesNotOverwrite(t *testing.T) {
 		t.Fatal("--force なのに上書きされていない")
 	}
 }
+
+// TestExplain は、explain が違反と、それを決めた設定の該当箇所を指すことを確かめる。違反を「禁止」
+// とだけ伝えると、書き手は言い換えて再投稿する。何がその器を許していないのかまで見せて、はじめて直せる。
+func TestExplain(t *testing.T) {
+	cfgPath := tree(t, testConfig, testSource)
+
+	tests := []struct {
+		name   string
+		target string
+		want   []string
+	}{
+		{
+			name:   "許されていない器は、許可されている器の列挙を指す",
+			target: "a.go:6:2",
+			want: []string{
+				"a.go:6:2  place-not-allowed  place=leading kind=line",
+				"この位置のコメントは許可されていません。",
+				"の syntax.cstyle.allow です:",
+				"allow[0]  place: header",
+				"allow[2]  place: trailing  label: [TODO:]",
+				"place: leading（kind: line）はこの列挙にありません",
+			},
+		},
+		{
+			name:   "ラベル必須は、そのラベルの列挙を指す",
+			target: "a.go:8",
+			want: []string{
+				"a.go:8:6  label-required",
+				"の syntax.cstyle.allow[2].label です:",
+				"label: [TODO:]",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout strings.Builder
+			if got := run([]string{"explain", "--config", cfgPath, tt.target}, &stdout, io.Discard); got != exitViolated {
+				t.Fatalf("run(explain %s) = %d, want %d\n%s", tt.target, got, exitViolated, stdout.String())
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(stdout.String(), want) {
+					t.Errorf("出力に %q が無い:\n%s", want, stdout.String())
+				}
+			}
+		})
+	}
+}
+
+// TestExplainForm は、書式の違反が form の該当キーを、その値ごと指すことを確かめる。
+func TestExplainForm(t *testing.T) {
+	const cfg = `
+syntax:
+  cstyle:
+    files: ["**/*.go"]
+    mode: structural
+    allow:
+      - place: header
+      - place: doc
+        form:
+          paragraphs: 1
+disposition:
+  form-paragraphs: |
+    doc コメントの段落は1つです。
+`
+	const src = "package p\n\n// F は何かをする。\n//\n// 背景を足した段落。\nfunc F() {}\n"
+
+	var stdout strings.Builder
+	if got := run([]string{"explain", "--config", tree(t, cfg, src), "a.go:3"}, &stdout, io.Discard); got != exitViolated {
+		t.Fatalf("run(explain) = %d, want %d\n%s", got, exitViolated, stdout.String())
+	}
+	for _, want := range []string{
+		"a.go:3:1  form-paragraphs  place=doc kind=line",
+		"の syntax.cstyle.allow[1].form.paragraphs です:",
+		"paragraphs: 1",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("出力に %q が無い:\n%s", want, stdout.String())
+		}
+	}
+}
+
+// TestExplainLexicon は、層2 の違反が rules の該当エントリを指すことを確かめる。層2 の id は
+// ユーザーが書いた任意の文字列で、メッセージも disposition ではなく rules[].message が持つ。
+func TestExplainLexicon(t *testing.T) {
+	const cfg = `
+syntax:
+  cstyle:
+    files: ["**/*.go"]
+    mode: structural
+    allow:
+      - place: header
+      - place: doc
+rules:
+  - id: no-history
+    pattern: "かつて|従来"
+    message: |
+      変化を語っています。今のコードが何であるかだけを書いてください。
+    where:
+      syntax: [cstyle]
+`
+	const src = "package p\n\n// F は、かつての実装を置き換えたもの。\nfunc F() {}\n"
+
+	var stdout strings.Builder
+	if got := run([]string{"explain", "--config", tree(t, cfg, src), "a.go:3"}, &stdout, io.Discard); got != exitViolated {
+		t.Fatalf("run(explain) = %d, want %d\n%s", got, exitViolated, stdout.String())
+	}
+	for _, want := range []string{
+		"a.go:3:1  no-history  place=doc kind=line",
+		"変化を語っています。",
+		"の rules[0] です:",
+		"pattern: かつて|従来",
+		"where.syntax: [cstyle]",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("出力に %q が無い:\n%s", want, stdout.String())
+		}
+	}
+}
+
+// TestExplainBaselined は、baseline が抑えている違反も、問われたなら説明することを確かめる
+// （抑えていることは併せて告げる）。
+func TestExplainBaselined(t *testing.T) {
+	cfgPath := tree(t, testConfig+"baseline: .esorp-baseline.json\n", testSource)
+	if got := run([]string{"baseline", "update", "--allow-new", "--config", cfgPath}, io.Discard, io.Discard); got != exitOK {
+		t.Fatalf("baseline update = %d", got)
+	}
+
+	var stdout strings.Builder
+	if got := run([]string{"explain", "--config", cfgPath, "a.go:6"}, &stdout, io.Discard); got != exitViolated {
+		t.Fatalf("run(explain) = %d, want %d\n%s", got, exitViolated, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "baseline が抑えています") {
+		t.Errorf("baseline が抑えていることを告げていない:\n%s", stdout.String())
+	}
+}
+
+// TestExplainNoViolation は、違反の無いコメントと、コメントの無い行を書き分けることを確かめる
+// （どちらも適合だが、指し損なったのかどうかは読み手に分かる必要がある）。
+func TestExplainNoViolation(t *testing.T) {
+	cfgPath := tree(t, testConfig, testSource)
+
+	tests := []struct {
+		name   string
+		target string
+		want   string
+	}{
+		{"適合したコメント", "a.go:4", "適合しています"},
+		{"コメントの無い行", "a.go:2", "コメントはありません"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout strings.Builder
+			if got := run([]string{"explain", "--config", cfgPath, tt.target}, &stdout, io.Discard); got != exitOK {
+				t.Fatalf("run(explain %s) = %d, want %d\n%s", tt.target, got, exitOK, stdout.String())
+			}
+			if !strings.Contains(stdout.String(), tt.want) {
+				t.Errorf("出力に %q が無い:\n%s", tt.want, stdout.String())
+			}
+		})
+	}
+}
+
+// TestExplainBadTarget は、指し先の誤りが設定エラーになることを確かめる（黙って適合にしない）。
+func TestExplainBadTarget(t *testing.T) {
+	cfgPath := tree(t, testConfig, testSource)
+	dir := filepath.Dir(cfgPath)
+	if err := os.WriteFile(filepath.Join(dir, "b.txt"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"指し先が無い", []string{"explain", "--config", cfgPath}},
+		{"指し先が2つ", []string{"explain", "--config", cfgPath, "a.go:6", "a.go:8"}},
+		{"行が無い", []string{"explain", "--config", cfgPath, "a.go"}},
+		{"行が数でない", []string{"explain", "--config", cfgPath, "a.go:six"}},
+		{"ファイルが無い", []string{"explain", "--config", cfgPath, "無い.go:1"}},
+		{"監査の対象でないファイル", []string{"explain", "--config", cfgPath, "b.txt:1"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stderr strings.Builder
+			if got := run(tt.args, io.Discard, &stderr); got != exitConfig {
+				t.Errorf("run(%q) = %d, want %d", tt.args, got, exitConfig)
+			}
+			if stderr.Len() == 0 {
+				t.Error("何が起きたか告げていない")
+			}
+		})
+	}
+}

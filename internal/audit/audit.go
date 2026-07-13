@@ -255,11 +255,11 @@ func evaluate(c place.Comment, syn config.Syntax, cfg *config.Config, t rule.Tar
 		return rule.Lexicon(c, cfg.Rules, t, spec)
 	}
 
-	a, v := rule.Vessel(c, syn.Allow, cfg.Disposition, spec)
+	i, v := rule.Vessel(c, syn.Allow, cfg.Disposition, t, spec)
 	if v != nil {
 		return []rule.Violation{*v}
 	}
-	if fv := rule.Form(c, a.Form, cfg.Disposition, spec); len(fv) > 0 {
+	if fv := rule.Form(c, syn.Allow[i].Form, cfg.Disposition, t, i, spec); len(fv) > 0 {
 		return fv
 	}
 	return rule.Lexicon(c, cfg.Rules, t, spec)

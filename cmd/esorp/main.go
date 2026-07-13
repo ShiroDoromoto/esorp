@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/ShiroDoromoto/esorp/internal/audit"
 	"github.com/ShiroDoromoto/esorp/internal/baseline"
@@ -37,6 +39,7 @@ const usage = `esorp — コメントの置き場所と書式を監査する
   esorp init                 設定ファイル（esorp.yaml）を生成する
   esorp check                設定に従いツリー全体を監査する
   esorp check --diff [<ref>] 変更分のみ監査する（既定の <ref> は origin/HEAD）
+  esorp explain <file>:<line>  その行のコメントが、なぜ違反で、どう始末するのかを説明する
   esorp baseline update      既存の違反をスナップショットする（減る方向のみ）
   esorp help                 この使い方を表示する
 
@@ -50,6 +53,12 @@ check のフラグ:
   --diff            <ref> と HEAD の分岐点から作業ツリーまでに追加された行に重なる
                     コメントだけを監査する（pre-commit / PR 向け）。baseline も併せて効く。
                     <ref> は末尾に置く（他のフラグは <ref> より前に並べる）
+
+explain のフラグ:
+  --config <path>   設定ファイルの場所（既定: esorp.yaml）
+
+  <file>:<line> は check の報告をそのまま貼れる（桁まで付いていても受ける）。
+  違反そのものに加え、それを決めた設定の該当箇所（allow の列挙 / form / rules）を指す。
 
 baseline update のフラグ:
   --config <path>   設定ファイルの場所（既定: esorp.yaml）
@@ -76,6 +85,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runInit(args[1:], stdout, stderr)
 	case "check":
 		return runCheck(args[1:], stdout, stderr)
+	case "explain":
+		return runExplain(args[1:], stdout, stderr)
 	case "baseline":
 		return runBaseline(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
@@ -177,6 +188,124 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
+// runExplain は、指し示された行のコメントについて、違反とその根拠を書く。違反を「禁止」とだけ
+// 伝えると、書き手は言い換えて再投稿する。何がその器を許していないのかまで見せて、はじめて直せる。
+// 監査そのものは check と同じ道を通り、絞り込みだけを「その行に重なるコメント」にする（--diff が
+// 変更行で絞るのと同じ仕組み）。baseline は効かせない（抑えている違反も、問われたなら説明する）。
+func runExplain(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("explain", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", "esorp.yaml", "設定ファイルの場所")
+	if err := fs.Parse(args); err != nil {
+		return exitConfig
+	}
+	if fs.NArg() != 1 {
+		fmt.Fprintf(stderr, "esorp explain: 説明するコメントを <file>:<line> で1つ指定してください\n")
+		return exitConfig
+	}
+
+	file, line, ok := parseTarget(fs.Arg(0))
+	if !ok {
+		fmt.Fprintf(stderr, "esorp explain: %q は <file>:<line> の形ではありません\n", fs.Arg(0))
+		return exitConfig
+	}
+
+	root := filepath.Dir(*configPath)
+	rel, err := locate(root, file)
+	if err != nil {
+		fmt.Fprintf(stderr, "esorp explain: %v\n", err)
+		return exitConfig
+	}
+
+	sel := audit.Selection(func(p string, from, to int) bool {
+		return p == rel && from <= line && line <= to
+	})
+	a, code := scan(*configPath, sel, stderr)
+	if code != exitOK {
+		return code
+	}
+
+	switch {
+	case len(a.result.Skipped) > 0:
+		fmt.Fprintf(stderr, "esorp explain: %s はまだ検査できません（その言語のスキャナがありません）\n", rel)
+		return exitConfig
+	case a.result.Files == 0:
+		fmt.Fprintf(stderr, "esorp explain: %s は監査の対象ではありません（syntax.files: に当たらないか、gitignore されています）\n", rel)
+		return exitConfig
+	case a.result.Comments == 0:
+		fmt.Fprintf(stdout, "esorp: %s:%d にコメントはありません\n", rel, line)
+		return exitOK
+	case len(a.result.Findings) == 0:
+		fmt.Fprintf(stdout, "esorp: %s:%d のコメントは設定に適合しています\n", rel, line)
+		return exitOK
+	}
+
+	if err := report.Explain(stdout, a.cfg, *configPath, a.result, a.base); err != nil {
+		fmt.Fprintf(stderr, "esorp: %v\n", err)
+		return exitConfig
+	}
+	return exitViolated
+}
+
+// parseTarget は「<file>:<line>」を割る。check の報告（<file>:<line>:<col>）をそのまま貼れるよう、
+// 桁まで付いた形も受ける。桁は使わない（説明するのはコメント1つであって、その中の1文字ではない）。
+func parseTarget(arg string) (string, int, bool) {
+	parts := strings.Split(arg, ":")
+	if len(parts) >= 3 && isNumber(parts[len(parts)-1]) && isNumber(parts[len(parts)-2]) {
+		parts = parts[:len(parts)-1]
+	}
+	if len(parts) < 2 {
+		return "", 0, false
+	}
+
+	line, err := strconv.Atoi(parts[len(parts)-1])
+	file := strings.Join(parts[:len(parts)-1], ":")
+	if err != nil || line < 1 || file == "" {
+		return "", 0, false
+	}
+	return file, line, true
+}
+
+func isNumber(s string) bool {
+	_, err := strconv.Atoi(s)
+	return err == nil
+}
+
+// locate は、与えられたパスを監査するツリーの根からの相対パスに直す。check の報告に出るパス（根
+// からの相対）でも、手元の相対パス・絶対パスでも、同じコメントを指せるようにする。
+func locate(root, file string) (string, error) {
+	if rel := filepath.ToSlash(file); readable(filepath.Join(root, filepath.FromSlash(rel))) {
+		return rel, nil
+	}
+
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		return "", err
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(absRoot, abs)
+	if err != nil {
+		return "", err
+	}
+	rel = filepath.ToSlash(rel)
+
+	switch {
+	case strings.HasPrefix(rel, "../"):
+		return "", fmt.Errorf("%s は監査するツリー（%s）の外です", file, root)
+	case !readable(abs):
+		return "", fmt.Errorf("%s がありません", file)
+	}
+	return rel, nil
+}
+
+func readable(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.Mode().IsRegular()
+}
+
 // runBaseline は baseline のサブコマンドを捌く。今あるのは update だけで、書き出しはラチェットを
 // 通す（減る方向にしか動かない。もう違反していないキーは落ち、新しい違反は載らない）。
 func runBaseline(args []string, stdout, stderr io.Writer) int {
@@ -218,8 +347,10 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
-// audited は、設定を読んでツリーを走査した結果ひとまとめ。check と baseline update が同じ道を通る。
+// audited は、設定を読んでツリーを走査した結果ひとまとめ。check / explain / baseline update が
+// 同じ道を通る。
 type audited struct {
+	cfg          *config.Config
 	result       *audit.Result
 	base         *baseline.Baseline
 	baselinePath string
@@ -252,5 +383,5 @@ func scan(configPath string, sel audit.Selection, stderr io.Writer) (*audited, i
 		fmt.Fprintf(stderr, "esorp: %v\n", err)
 		return nil, exitConfig
 	}
-	return &audited{result: res, base: base, baselinePath: path}, exitOK
+	return &audited{cfg: cfg, result: res, base: base, baselinePath: path}, exitOK
 }

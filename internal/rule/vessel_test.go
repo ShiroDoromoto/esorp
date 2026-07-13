@@ -29,9 +29,11 @@ func vessel(t *testing.T, src string, allows []config.Allow) []*Violation {
 	t.Helper()
 
 	spec := scan.GoSpec()
+	target := Target{Syntax: "cstyle", Path: "a.go"}
+
 	var out []*Violation
 	for _, c := range place.Classify(scan.CStyle([]byte(src), spec), spec) {
-		if _, v := Vessel(c, allows, disposition, spec); v != nil {
+		if _, v := Vessel(c, allows, disposition, target, spec); v != nil {
 			out = append(out, v)
 		}
 	}
@@ -168,8 +170,8 @@ func TestVesselMultipleAllowsForSamePlace(t *testing.T) {
 	}
 }
 
-// TestVesselReturnsMatchedAllow は、器を許した allow を返すことを確かめる（書式の検査がその form
-// を使う）。
+// TestVesselReturnsMatchedAllow は、器を許した allow の添字を返すことを確かめる（書式の検査が
+// その form を使う）。
 func TestVesselReturnsMatchedAllow(t *testing.T) {
 	spec := scan.GoSpec()
 	src := "package p\n\n// Open はストアを開く。\nfunc Open() {}\n"
@@ -178,11 +180,29 @@ func TestVesselReturnsMatchedAllow(t *testing.T) {
 	doc := comments[0]
 
 	allows := []config.Allow{{Place: "header"}, {Place: "doc", Form: &config.Form{Subject: "required"}}}
-	a, v := Vessel(doc, allows, disposition, spec)
+	i, v := Vessel(doc, allows, disposition, Target{Syntax: "cstyle", Path: "a.go"}, spec)
 	if v != nil {
 		t.Fatalf("違反ではないはず: %#v", v)
 	}
-	if a == nil || a.Form == nil || a.Form.Subject != "required" {
-		t.Fatalf("器を許した allow が返っていない: %#v", a)
+	if i != 1 {
+		t.Fatalf("器を許した allow の添字が違う: %d", i)
+	}
+}
+
+// TestVesselSite は、層1 の違反が「それを決めた設定の場所」を指すことを確かめる。違反 id と設定は
+// 一対一で対応しており、explain はこれを辿って設定の該当箇所を見せる。
+func TestVesselSite(t *testing.T) {
+	allows := []config.Allow{{Place: "header"}, {Place: "trailing", Label: []string{"TODO:"}}}
+	src := "package p\n\nfunc F() {\n\t// 文の直前。\n\tx := 1 // ラベルが無い。\n\t_ = x\n}\n"
+
+	got := vessel(t, src, allows)
+	if len(got) != 2 {
+		t.Fatalf("違反が %d 件（2 件のはず）: %#v", len(got), got)
+	}
+	if s := got[0].Site; s.Path != "syntax.cstyle.allow" || s.Allow != -1 || s.Rule != -1 {
+		t.Errorf("place-not-allowed が器の列挙を指していない: %#v", s)
+	}
+	if s := got[1].Site; s.Path != "syntax.cstyle.allow[1].label" || s.Allow != 1 || s.Rule != -1 {
+		t.Errorf("label-required がラベルの列挙を指していない: %#v", s)
 	}
 }

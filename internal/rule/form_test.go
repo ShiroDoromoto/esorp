@@ -38,13 +38,15 @@ func formWith(t *testing.T, src string, f *config.Form, spec scan.LangSpec) []st
 
 	allows := []config.Allow{{Place: "header"}, {Place: "doc", Form: f}, {Place: "trailing", Form: f}}
 
+	target := Target{Syntax: "cstyle", Path: "a.go"}
+
 	var out []string
 	for _, c := range place.Classify(scan.CStyle([]byte(src), spec), spec) {
-		a, v := Vessel(c, allows, formDisposition, spec)
+		i, v := Vessel(c, allows, formDisposition, target, spec)
 		if v != nil {
 			t.Fatalf("器で落ちている（書式のテストにならない）: %s %s %d", v.ID, v.Place, v.Line)
 		}
-		for _, fv := range Form(c, a.Form, formDisposition, spec) {
+		for _, fv := range Form(c, allows[i].Form, formDisposition, target, i, spec) {
 			if fv.Message == "" {
 				t.Errorf("%s: disposition のメッセージが引かれていない", fv.ID)
 			}

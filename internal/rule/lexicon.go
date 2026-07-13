@@ -1,6 +1,7 @@
 package rule
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/ShiroDoromoto/esorp/internal/config"
@@ -29,14 +30,15 @@ func Lexicon(c place.Comment, rules []config.Rule, t Target, spec scan.LangSpec)
 	body := scan.Unwrap(scan.BodyLines(c.Text, spec), spec)
 
 	var out []Violation
-	for _, r := range rules {
+	for i, r := range rules {
 		if !applies(r, c, t) {
 			continue
 		}
 		if !r.Regexp.MatchString(body) {
 			continue
 		}
-		v := violation(r.ID, c, nil)
+		site := Site{Path: fmt.Sprintf("rules[%d]", i), Allow: -1, Rule: i}
+		v := violation(r.ID, site, c, nil)
 		v.Message = r.Message
 		out = append(out, *v)
 	}

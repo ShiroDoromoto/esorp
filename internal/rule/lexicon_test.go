@@ -202,3 +202,20 @@ func TestLexiconFencedCodeBlock(t *testing.T) {
 		})
 	}
 }
+
+// TestLexiconSite は、層2 の違反が、それを出した rules のエントリを指すことを確かめる。層2 の id は
+// ユーザーが書いた任意の文字列なので、explain は id ではなく、この添字で設定の該当箇所を引く。
+func TestLexiconSite(t *testing.T) {
+	rs := rules(t,
+		config.Rule{ID: "no-todo", Pattern: "TODO", Message: "起票してください。"},
+		config.Rule{ID: "no-history", Pattern: "かつて", Message: "今のコードの説明に書き直してください。"},
+	)
+
+	got := lexicon(t, "// F は、かつての実装を置き換えたもの。\nfunc F() {}\n", rs, Target{Syntax: "cstyle", Path: "a.go"})
+	if len(got) != 1 {
+		t.Fatalf("違反が %d 件（1 件のはず）: %#v", len(got), got)
+	}
+	if s := got[0].Site; s.Path != "rules[1]" || s.Rule != 1 || s.Allow != -1 {
+		t.Errorf("当たったルールを指していない: %#v", s)
+	}
+}

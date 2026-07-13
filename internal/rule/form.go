@@ -35,7 +35,7 @@ var urlRe = regexp.MustCompile(`https?://`)
 // 器 → 書式 → 語彙）。形だけを見る。語彙は見ない。allow に form: が無ければ、書式は問わない
 // （何も検査しない）。subject は紐づく宣言が無ければ判定できないので、宣言名を取り出せなかった
 // コメント（括弧でまとめた宣言そのもの、宣言に紐づかない doc 記法）は検査しない。
-func Form(c place.Comment, f *config.Form, disp map[string]string, spec scan.LangSpec) []Violation {
+func Form(c place.Comment, f *config.Form, disp map[string]string, t Target, allow int, spec scan.LangSpec) []Violation {
 	if f == nil {
 		return nil
 	}
@@ -44,27 +44,27 @@ func Form(c place.Comment, f *config.Form, disp map[string]string, spec scan.Lan
 	body := strings.Join(lines, "\n")
 
 	var out []Violation
-	add := func(id string) {
-		out = append(out, *violation(id, c, disp))
+	add := func(id, key string) {
+		out = append(out, *violation(id, vesselSite(t, allow, "form."+key), c, disp))
 	}
 
 	if f.Subject == "required" && c.Decl != "" && !startsWithDecl(body, c.Decl) {
-		add(FormSubject)
+		add(FormSubject, "subject")
 	}
 	if f.Headings == "deny" && hasHeading(lines, code) {
-		add(FormHeadings)
+		add(FormHeadings, "headings")
 	}
 	if f.Paragraphs != nil && paragraphs(lines, code) > *f.Paragraphs {
-		add(FormParagraphs)
+		add(FormParagraphs, "paragraphs")
 	}
 	if f.Refs == "deny" && refRe.MatchString(body) {
-		add(FormRefs)
+		add(FormRefs, "refs")
 	}
 	if f.MaxLines != nil && len(lines) > *f.MaxLines {
-		add(FormMaxLines)
+		add(FormMaxLines, "max_lines")
 	}
 	if f.URLs == "deny" && urlRe.MatchString(body) {
-		add(FormURLs)
+		add(FormURLs, "urls")
 	}
 	return out
 }
