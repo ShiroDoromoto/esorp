@@ -1230,3 +1230,18 @@ func TestLexiconTryBadInput(t *testing.T) {
 		})
 	}
 }
+
+// TestReviewFlagAfterPath は、<path> の後ろに置かれたフラグを、黙ってパスとして飲み込まないことを
+// 確かめる。Go の flag は最初の非フラグ引数で解析を止めるので、そのままでは --format が無視され、
+// 指定していない形式で出てしまう（指定が黙って効かないのが、いちばん悪い）。
+func TestReviewFlagAfterPath(t *testing.T) {
+	cfgPath := tree(t, reviewConfig, testSource)
+
+	var stdout, stderr strings.Builder
+	if got := run([]string{"review", "--config", cfgPath, "internal", "--format", "text"}, &stdout, &stderr); got != exitConfig {
+		t.Fatalf("review <path> --format text = %d, want %d\n%s", got, exitConfig, stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "前に置いて") {
+		t.Errorf("直し方を言っていない: %q", stderr.String())
+	}
+}

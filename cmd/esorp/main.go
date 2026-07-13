@@ -92,6 +92,8 @@ review のフラグ:
   --config <path>   設定ファイルの場所（既定: esorp.yaml）。この場所がツリーの根になる
   --format <fmt>    出力の形式（text | json、既定: json）
 
+  フラグは <path> より前に置く（後ろのフラグはパスとして読まれるので、エラーにします）。
+
   層1・層2 のどれにも当たらなかったコメントを、設定の review.question を添えて渡す口。
   check --diff が「今書いたもの」を渡すのに対し、こちらは既にあるツリーを渡す——導入初日に、
   既存のコメントを一度だけエージェントに読ませるためにある。<path> を与えると、そこに入る
@@ -561,6 +563,12 @@ func runReview(args []string, stdout, stderr io.Writer) int {
 	}
 	if !knownFormat("review", *format, stderr) {
 		return exitConfig
+	}
+	for _, a := range fs.Args() {
+		if strings.HasPrefix(a, "-") {
+			fmt.Fprintf(stderr, "esorp review: %q はパスとして読まれます（フラグは <path> より前に置いてください）\n", a)
+			return exitConfig
+		}
 	}
 
 	sel := pathSelection(fs.Args())
