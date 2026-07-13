@@ -39,10 +39,6 @@ jobs:
   # 配った GitHub Action も「配ったもの」のひとつ。消費者と同じ書き方（uses:）で使う。
   # verify とは別の job に置く。同じ job だと wharfy が入れた esorp が PATH に残り、
   # action 自身が入れられたのかどうかが見分けられない。
-  #
-  # ここで見ていないもの: pull_request のときの分岐（esorp check --diff origin/<base>）。
-  # GITHUB_BASE_REF は PR でしか埋まらず、このリポジトリは PR を通さない。そこだけは
-  # 使い捨てのリポジトリで見るしかない。
   action:
     runs-on: ubuntu-latest
     steps:
@@ -70,3 +66,82 @@ jobs:
         with:
           version: ${{ steps.tag.outputs.tag }}
           args: check --format json
+
+  # action の3つ目の分岐 —— 変更分だけを見る（check --diff origin/<base>）。pull_request で
+  # 通る道だが、このリポジトリは PR を通さないので、実物の PR は起きない。比較先の枝を base
+  # 入力で名指しすれば、同じ道をそのまま通せる（action がこの入力を持つのは、そのため）。
+  #
+  # ここだけタグに合わせない。base 入力は配った版（v0.2.0）にまだ無く、タグの action を
+  # 呼んでも無視されてツリー全体を見る側へ落ちるため。次の版を配ったらタグへ向け直す。
+  #
+  # 通ったことをどう知るか。緑になるだけでは足りない —— base が届かず、ツリー全体を見る側へ
+  # 落ちても緑にはなる。そこで「分岐点の側に、まだ直していない違反を1つ置く」。ツリー全体を
+  # 見れば捕まり、変更分だけを見れば見逃す違反。この job が緑なら、見たのは変更分だけだった。
+  action-pull-request:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: PR の形をこしらえる
+        run: |
+          set -eu
+
+          # 分岐点の側に置く違反。ラベルの無い行末コメントで、層1 に引っかかる。
+          cat > verify-fixture.go <<'GO'
+          package verifyfixture
+
+          var seen = 0 // 従来はここが違った
+          GO
+          git add verify-fixture.go
+          git -c user.email=verify@example.invalid -c user.name=verify \
+            commit --quiet -m "分岐点の側に違反を1つ置く"
+
+          # 比較先の枝。GitHub の main は動かせないので、origin を使い捨ての upstream に
+          # 差し替える。remotes/origin/main は消しておく —— action の git fetch が本当に
+          # 効いているのでなければ、この後 origin/main は解決しない。
+          upstream="$RUNNER_TEMP/upstream.git"
+          git init --quiet --bare -b main "$upstream"
+          git push --quiet "$upstream" HEAD:refs/heads/main
+          git remote set-url origin "$upstream"
+          git update-ref -d refs/remotes/origin/main
+
+          # 「今書いたもの」。通るコメントなので、変更分だけを見るなら緑。
+          cat >> verify-fixture.go <<'GO'
+
+          // Seen は、変更分だけが見られたことを示す。
+          func Seen() int { return seen }
+          GO
+
+      # 緑であることが「変更分だけを見た」の証拠になる（分岐点側の違反を見逃したから）。
+      - name: 変更分だけを見る分岐を通す
+        uses: ./
+        with:
+          base: main
+
+      # 裏側 —— 変更分の中の違反は、ちゃんと捕まるか。見逃すなら、この分岐は何も見ていない。
+      - name: 今書いた違反を1つ足す
+        run: |
+          set -eu
+          cat >> verify-fixture.go <<'GO'
+
+          // Extra は、かつて別の名前だった。
+          func Extra() int { return 1 }
+          GO
+
+      - name: 変更分の違反で赤くなる
+        id: caught
+        continue-on-error: true
+        uses: ./
+        with:
+          base: main
+
+      - name: 赤くなったことを確かめる
+        run: |
+          set -eu
+          if [ "${{ steps.caught.outcome }}" != failure ]; then
+            echo "今書いた違反が捕まっていない（変更分が見られていない）" >&2
+            exit 1
+          fi
+          echo "捕まった"

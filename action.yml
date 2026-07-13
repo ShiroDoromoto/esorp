@@ -18,10 +18,18 @@ inputs:
     description: 入れる版。タグ（例 v0.1.0）か latest
     required: false
     default: latest
+  base:
+    description: >-
+      変更分だけを見るときの比較先の枝。既定は pull_request のときだけ埋まり、それ以外では空
+    required: false
+    # 環境変数 GITHUB_BASE_REF ではなく、この入力から取る。GITHUB_ で始まる名前はランナーの
+    # 予約で、step env / job env / GITHUB_ENV のどれで埋めてもランナーの値が勝つ。つまり
+    # 変数を直に読むかぎり、この分岐は pull_request 以外からは一度も通せない（確かめられない）。
+    default: ${{ github.base_ref }}
   args:
     description: >-
-      esorp に渡す引数。空なら pull_request では変更分だけを（check --diff origin/<base>）、
-      それ以外ではツリー全体を（check）見る
+      esorp に渡す引数。空なら base があるときは変更分だけを（check --diff origin/<base>）、
+      無ければツリー全体を（check）見る
     required: false
     default: ""
 
@@ -46,16 +54,17 @@ runs:
       shell: bash
       env:
         ARGS: ${{ inputs.args }}
+        BASE: ${{ inputs.base }}
       run: |
         set -eu
         if [ -n "$ARGS" ]; then
           # 単語に割って渡す（引数を丸ごと預かる口なので、分割はここでの意図）
           # shellcheck disable=SC2086
           esorp $ARGS
-        elif [ -n "${GITHUB_BASE_REF:-}" ]; then
+        elif [ -n "$BASE" ]; then
           # checkout は PR の ref しか持って来ない。比較先の枝は自分で取りに行く。
-          git fetch --no-tags origin "+refs/heads/${GITHUB_BASE_REF}:refs/remotes/origin/${GITHUB_BASE_REF}"
-          esorp check --diff "origin/${GITHUB_BASE_REF}"
+          git fetch --no-tags origin "+refs/heads/${BASE}:refs/remotes/origin/${BASE}"
+          esorp check --diff "origin/${BASE}"
         else
           esorp check
         fi
