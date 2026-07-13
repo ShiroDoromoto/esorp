@@ -36,6 +36,7 @@ syntax:
       - "**/*.yaml"
       - "**/*.sh"
       - "**/.gitignore"
+      - "**/Makefile"
     mode: content-only
 
   sgml:

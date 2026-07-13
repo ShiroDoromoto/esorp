@@ -15,24 +15,19 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # 検査の中身は Makefile が持つ。手元で `make check` が緑なら、ここも緑になる。
       - name: gofmt
-        run: |
-          out=$(gofmt -l .)
-          if [ -n "$out" ]; then
-            echo "gofmt が要るファイル:"
-            echo "$out"
-            exit 1
-          fi
+        run: make fmt
 
       - name: go vet
-        run: go vet ./...
+        run: make vet
 
       - name: go test
-        run: go test ./...
+        run: make test
 
       # esorp を esorp 自身に当てる。baseline を効かせた状態で緑を保つ（新しい違反は増やさない）。
       - name: esorp check（ドッグフーディング）
-        run: go run ./cmd/esorp check
+        run: make dogfood
 
       # 純 Go・cgo なし・単一バイナリを担保する（CI に置くバイナリが要件）。
       - name: クロスコンパイル
@@ -52,9 +47,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ワークフロー3本と、uses: ./ から辿られる action.yml をまとめて見る。
-      # run: の中身は shellcheck に掛かる（ubuntu-latest に入っている）。
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # ワークフロー3本と、uses: ./ から辿られる action.yml をまとめて見る。呼び方は手元と
+      # 同じ（make actions）。run: の中身は shellcheck に掛かる（ubuntu-latest に入っている）。
       - name: actionlint
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash
-          ./actionlint -color
+        run: make actions
