@@ -54,6 +54,15 @@ jobs:
           PACKAGE_REPO_TOKEN: ${{ secrets.PACKAGE_REPO_TOKEN }}
         run: wharfy publish --yes
 
+      # GitHub Action の使う側は `uses: ShiroDoromoto/esorp@v0` と書く。README に具体的な版を
+      # 載せると、リリースのたびに README だけが古びる。配り終えてからメジャータグを動かす。
+      - name: メジャータグを動かす
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          major="${GITHUB_REF_NAME%%.*}"
+          git tag -f "$major" "$GITHUB_REF_NAME"
+          git push -f origin "refs/tags/$major"
+
       # 配って終わりにしない。消費者の側から入れて、動くところまでを1周とする。
       # fury は取り込みに時間がかかるので、ここで落ちても配布が壊れたとは限らない。
       # 確かめ直すときは Verify ワークフロー（verify.yml）を単独で叩く。

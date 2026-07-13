@@ -80,7 +80,7 @@ baseline に載せます（＝一覧として見える状態にする）。
 ```yaml
 repos:
   - repo: https://github.com/ShiroDoromoto/esorp
-    rev: v0.1.0
+    rev: ""               # pre-commit autoupdate が最新のタグで埋めます
     hooks:
       - id: esorp
 ```
@@ -94,8 +94,11 @@ repos:
 - uses: actions/checkout@v4
   with:
     fetch-depth: 0        # --diff は分岐点を取る。浅いクローンでは取れない
-- uses: ShiroDoromoto/esorp@v0.1.0
+- uses: ShiroDoromoto/esorp@v0
 ```
+
+`v0` はメジャータグで、リリースのたびに最新のリリースへ移ります。特定の版に留めたいなら、
+その版のタグを直に書きます。
 
 引数を渡さなければ、pull request では変更分だけを（`check --diff origin/<base>`）、それ以外では
 ツリー全体を（`check`）見ます。`with: {args: "check"}` で上書きできます。

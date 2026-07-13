@@ -3,7 +3,7 @@
 #
 #   repos:
 #     - repo: https://github.com/ShiroDoromoto/esorp
-#       rev: v0.1.0
+#       rev: ""            # pre-commit autoupdate が最新のタグで埋める
 #       hooks:
 #         - id: esorp
 #
