@@ -12,7 +12,8 @@
 - id: esorp
   name: esorp
   description: コメントの置き場所と書式を監査する
-  entry: esorp check --diff HEAD
+  entry: esorp
+  args: [check, --diff, HEAD]
   language: golang
   pass_filenames: false
   require_serial: true
