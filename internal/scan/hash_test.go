@@ -407,3 +407,78 @@ func TestShebangToken(t *testing.T) {
 		t.Error("shebang はコメントでもコードでもない")
 	}
 }
+
+// TestScanPowerShellHereString は、ヒアストリング（@" … "@）の中身を文字列として読むことを押さえる。
+// 中身に現れる「#」はコメントではない。閉じるのは行頭に立つ「"@」だけで、行中のものでは閉じない。
+func TestScanPowerShellHereString(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want []want
+	}{
+		{
+			name: "中身の # はコメントではない",
+			src:  "$s = @\"\n# これは文字列\n\"@\n# これはコメント\n",
+			want: []want{
+				{line: 4, endLine: 4, col: 1, kind: KindLine, text: "# これはコメント"},
+			},
+		},
+		{
+			name: "変数を展開しない形（@' … '@）",
+			src:  "$s = @'\n# 文字列\n'@\nGet-Item  # 後ろ\n",
+			want: []want{
+				{line: 4, endLine: 4, col: 11, kind: KindLine, text: "# 後ろ"},
+			},
+		},
+		{
+			name: "開きの行の後ろにコメントは書けない（@\" の後は行末）",
+			src:  "$h = @{ k = \"@x\" }  # 後ろ\n",
+			want: []want{
+				{line: 1, endLine: 1, col: 21, kind: KindLine, text: "# 後ろ"},
+			},
+		},
+		{
+			name: "行中の \"@ では閉じない",
+			src:  "$s = @\"\nmail: a\"@b.example\n\"@\n# コメント\n",
+			want: []want{
+				{line: 4, endLine: 4, col: 1, kind: KindLine, text: "# コメント"},
+			},
+		},
+		{
+			name: "中身のブロックコメント記号もただの文字",
+			src:  "$s = @\"\n<# 文字列 #>\n\"@\n<# 本物 #>\n",
+			want: []want{
+				{line: 4, endLine: 4, col: 1, kind: KindBlock, text: "<# 本物 #>"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			checkComments(t, comments(Scan([]byte(tt.src), PowerShellSpec())), tt.want)
+		})
+	}
+}
+
+// TestScanPowerShellHereStringBody は、ヒアストリングの中身が1つの文字列トークンになることを
+// 押さえる。コメントだけを見ていると、中身が「読み飛ばされた」のか「文字列として読まれた」のかが
+// 区別できない。
+func TestScanPowerShellHereStringBody(t *testing.T) {
+	toks := Scan([]byte("$s = @\"\n# 一行目\n二行目\n\"@\n"), PowerShellSpec())
+
+	var got []Token
+	for _, tk := range toks {
+		if tk.Kind == KindString {
+			got = append(got, tk)
+		}
+	}
+	if len(got) != 1 {
+		t.Fatalf("文字列トークン = %#v, want 1 件（開きから閉じまで）", got)
+	}
+	if want := "@\"\n# 一行目\n二行目\n\"@"; got[0].Text != want {
+		t.Errorf("中身 = %q, want %q", got[0].Text, want)
+	}
+	if got[0].Line != 1 || got[0].EndLine != 4 {
+		t.Errorf("行 = %d-%d, want 1-4", got[0].Line, got[0].EndLine)
+	}
+}

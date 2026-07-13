@@ -29,11 +29,24 @@ type StringSpec struct {
 	// Interp は、文字列の中でコードに戻る記法の開き（TS のテンプレートリテラルの「${」）。
 	// 中は再びコードなので、そこに現れるコメントはコメントとして読む。
 	Interp string
+
+	// Here は、開きが行末に立ち、閉じが行頭に立つ形（PowerShell のヒアストリング @" … "@）。
+	// 中身は引用符も「#」も含みうるただの文字列で、行頭でない「"@」では閉じない。この2つを見ないと、
+	// ハッシュテーブル（@{…}）や配列（@(…)）の中の文字列を開きと読み違え、その先のコメントを飲み込む。
+	Here bool
 }
 
 // openAt は、src の pos がこの形の開きに当たるなら、開きのバイト数と、それに対応する
 // 閉じ記号を返す。閉じ記号が開きに依るのは Hashes のときだけで、他は Close そのもの。
+// Here の開きは行末に立たなければならないので、後ろに何か（空白以外）が続くなら開きではない。
 func (sp StringSpec) openAt(src []byte, pos int) (n int, close string, ok bool) {
+	if sp.Here {
+		if !hasAt(src, pos, sp.Open) || !restOfLineBlank(src, pos+len(sp.Open)) {
+			return 0, "", false
+		}
+		return len(sp.Open), sp.Close, true
+	}
+
 	if !sp.Hashes {
 		if hasAt(src, pos, sp.Open) {
 			return len(sp.Open), sp.Close, true
@@ -54,6 +67,20 @@ func (sp StringSpec) openAt(src []byte, pos int) (n int, close string, ok bool) 
 	}
 	hashes := strings.Repeat("#", i-pos-len(prefix))
 	return i + len(quote) - pos, sp.Close + hashes, true
+}
+
+// restOfLineBlank は、src の pos から行末までが空白だけであることを見る（末尾に達していてもよい）。
+func restOfLineBlank(src []byte, pos int) bool {
+	for i := pos; i < len(src); i++ {
+		switch src[i] {
+		case ' ', '\t', '\r':
+		case '\n':
+			return true
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // LangSpec は言語差を吸収する。ファミリ（cstyle / hash / sgml / cssblock）が違っても、コメントと
@@ -340,13 +367,18 @@ func GitignoreSpec() LangSpec {
 }
 
 // PowerShellSpec は PowerShell の字句（hash ファミリ）。「#」に加えてブロックコメント <# #> を持つ。
-// ヒアドキュメントの記法は違う（@" … "@）ので、シェルのものは持たせない。
+// 長い文字列はヒアストリング（@" … "@）で書き、シェルのヒアドキュメント（<<EOF）は持たない。
+// ヒアストリングは開きが長いので、普通の引用符より先に照合する。
 func PowerShellSpec() LangSpec {
 	spec := ShellSpec()
 	spec.Name = "powershell"
 	spec.BlockOpen = "<#"
 	spec.BlockClose = "#>"
 	spec.Heredocs = false
+	spec.Strings = append([]StringSpec{
+		{Open: `@"`, Close: `"@`, Multiline: true, Here: true},
+		{Open: "@'", Close: "'@", Multiline: true, Here: true},
+	}, spec.Strings...)
 	return spec
 }
 

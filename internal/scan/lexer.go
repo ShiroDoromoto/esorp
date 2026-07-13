@@ -452,6 +452,15 @@ func (s *lexer) oneRune(sp StringSpec, n int, close string) bool {
 	return hasAt(s.src, p+size, close)
 }
 
+// closes は、現在位置がその文字列を閉じるかを見る。ヒアストリングを閉じるのは行頭に立つ「"@」
+// だけで、行の途中に現れたもの（$h = @{ k = "@x" }）では閉じない。
+func (s *lexer) closes(sp StringSpec, close string) bool {
+	if !s.has(close) {
+		return false
+	}
+	return !sp.Here || s.pos == s.lineStart
+}
+
 // stringLit は、開きの長さ n と、それに対応する閉じ記号を受けて文字列リテラルを1つ読む
 // （閉じ記号が開きに依るのは Rust の r#"…"# のような可変長の区切りがあるため）。改行を含められない
 // 形が閉じずに行末に来たら、不正なソースなので、そこで打ち切る。
@@ -475,7 +484,7 @@ func (s *lexer) stringLit(sp StringSpec, n int, close string) {
 			} else {
 				s.pos++
 			}
-		case s.has(close):
+		case s.closes(sp, close):
 			s.pos += len(close)
 			s.emit(KindString, line, col, s.line, string(s.src[start:s.pos]))
 			return
