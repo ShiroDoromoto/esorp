@@ -1,0 +1,61 @@
+name: esorp
+description: コメントの置き場所と書式を監査する
+author: ShiroDoromoto
+
+branding:
+  icon: message-square
+  color: gray
+
+# 使う側のワークフローにこう書く（linux / macOS ランナー）:
+#
+#   - uses: actions/checkout@v4
+#     with:
+#       fetch-depth: 0        # --diff は分岐点を取る。浅いクローンでは取れない
+#   - uses: ShiroDoromoto/esorp@v0.1.0
+#
+inputs:
+  version:
+    description: 入れる版。タグ（例 v0.1.0）か latest
+    required: false
+    default: latest
+  args:
+    description: >-
+      esorp に渡す引数。空なら pull_request では変更分だけを（check --diff origin/<base>）、
+      それ以外ではツリー全体を（check）見る
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: esorp を入れる
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -eu
+        if [ "$VERSION" = latest ]; then
+          url="https://github.com/ShiroDoromoto/esorp/releases/latest/download/install.sh"
+        else
+          url="https://github.com/ShiroDoromoto/esorp/releases/download/${VERSION}/install.sh"
+        fi
+        curl -fsSL "$url" | sh
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: esorp を走らせる
+      shell: bash
+      env:
+        ARGS: ${{ inputs.args }}
+      run: |
+        set -eu
+        if [ -n "$ARGS" ]; then
+          # 単語に割って渡す（引数を丸ごと預かる口なので、分割はここでの意図）
+          # shellcheck disable=SC2086
+          esorp $ARGS
+        elif [ -n "${GITHUB_BASE_REF:-}" ]; then
+          # checkout は PR の ref しか持って来ない。比較先の枝は自分で取りに行く。
+          git fetch --no-tags origin "+refs/heads/${GITHUB_BASE_REF}:refs/remotes/origin/${GITHUB_BASE_REF}"
+          esorp check --diff "origin/${GITHUB_BASE_REF}"
+        else
+          esorp check
+        fi

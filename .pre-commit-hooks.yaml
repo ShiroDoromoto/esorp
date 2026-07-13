@@ -1,0 +1,18 @@
+# pre-commit（https://pre-commit.com）から esorp を呼ぶための宣言。使う側は自分のリポジトリの
+# .pre-commit-config.yaml にこう書く:
+#
+#   repos:
+#     - repo: https://github.com/ShiroDoromoto/esorp
+#       rev: v0.1.0
+#       hooks:
+#         - id: esorp
+#
+# 見るのは HEAD から作業ツリーまでに増えた行に重なるコメントだけ。既にあった違反は素通しする
+# （それは baseline の仕事）。コミットのたびにツリー全体を見たいなら args: [check] で上書きする。
+- id: esorp
+  name: esorp
+  description: コメントの置き場所と書式を監査する
+  entry: esorp check --diff HEAD
+  language: golang
+  pass_filenames: false
+  require_serial: true
