@@ -49,6 +49,12 @@ type Config struct {
 type Syntax struct {
 	Family string `yaml:"family"`
 
+	// Lang は、このエントリのファイルを読む字句を名指しする（lang: go）。省略すると、字句は
+	// ファイルの名前・拡張子から引き、それも空振りならファミリの既定になる。名指しが要るのは、
+	// 拡張子も既知の名前も持たない C 系のファイル（生成物・フック）で、cstyle はファミリの既定を
+	// 持たない（器の判定が言語ごとの宣言の語彙に依るため）。
+	Lang string `yaml:"lang"`
+
 	// Files は、このファミリのスキャナで読むファイルの glob。拡張子ではなく glob なのは、
 	// 拡張子を持たないファイル（Makefile）があるため。
 	Files []string `yaml:"files"`
@@ -224,6 +230,7 @@ func validateSyntax(name, family string, s Syntax, add func(string, ...any)) {
 	if !slices.Contains(knownFamilies, family) {
 		add("%s.family: %q を読むスキャナがありません（今あるのは %s）", at, family, strings.Join(knownFamilies, " / "))
 	}
+	validateLang(at, family, s.Lang, add)
 	validateFiles(at, s.Files, add)
 
 	switch s.Mode {
@@ -239,6 +246,23 @@ func validateSyntax(name, family string, s Syntax, add func(string, ...any)) {
 		add("%s.mode: 必須です（structural | content-only）", at)
 	default:
 		add("%s.mode: %q は不明です（structural | content-only）", at, s.Mode)
+	}
+}
+
+// validateLang は lang: の名前を検める。ファミリと食い違う名前（family: hash に lang: go）は
+// 設定エラーにする。通してしまうと、コメント記号からして違う字句でそのファイル群を読み、
+// 検査されないまま適合したように見える。
+func validateLang(at, family, lang string, add func(string, ...any)) {
+	if lang == "" {
+		return
+	}
+	f, ok := scan.LangFamily(lang)
+	if !ok {
+		add("%s.lang: %q という字句はありません（今あるのは %s）", at, lang, strings.Join(scan.LangNames(), " / "))
+		return
+	}
+	if f != family {
+		add("%s.lang: %q は %s ファミリの字句です（family: %s と食い違います）", at, lang, f, family)
 	}
 }
 

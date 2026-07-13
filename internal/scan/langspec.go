@@ -442,3 +442,57 @@ func FamilySpec(family string) (LangSpec, bool) {
 	}
 	return LangSpec{}, false
 }
+
+// langs は、名指しできる字句と、その字句が属する構文ファミリ。設定の lang: はここから引く。
+var langs = []struct {
+	family string
+	spec   func() LangSpec
+}{
+	{"cstyle", GoSpec},
+	{"cstyle", RustSpec},
+	{"cstyle", TSSpec},
+	{"cstyle", TSXSpec},
+	{"cstyle", JSSpec},
+	{"cstyle", JSXSpec},
+	{"cssblock", CSSSpec},
+	{"sgml", SGMLSpec},
+	{"hash", ShellSpec},
+	{"hash", YAMLSpec},
+	{"hash", TOMLSpec},
+	{"hash", MakeSpec},
+	{"hash", DockerSpec},
+	{"hash", GitignoreSpec},
+	{"hash", PowerShellSpec},
+}
+
+// SpecByName は、字句をその名前で引く（設定の lang:）。名前からも拡張子からも引けないファイルを、
+// 設定が「これは go の字句で読む」と名指しするためのもの。ファミリの既定を持たない cstyle は、
+// これでしか読めない。
+func SpecByName(name string) (LangSpec, bool) {
+	for _, l := range langs {
+		if spec := l.spec(); spec.Name == name {
+			return spec, true
+		}
+	}
+	return LangSpec{}, false
+}
+
+// LangFamily は、字句 name が属する構文ファミリ。設定が family: と食い違う lang: を書いていないかを
+// 見るために要る（family: hash に lang: go を書けば、コメント記号からして違う）。
+func LangFamily(name string) (string, bool) {
+	for _, l := range langs {
+		if l.spec().Name == name {
+			return l.family, true
+		}
+	}
+	return "", false
+}
+
+// LangNames は、名指しできる字句の名前。設定エラーで、書ける名前を挙げるために使う。
+func LangNames() []string {
+	names := make([]string, 0, len(langs))
+	for _, l := range langs {
+		names = append(names, l.spec().Name)
+	}
+	return names
+}
