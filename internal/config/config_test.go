@@ -71,8 +71,28 @@ func TestLoadTemplate(t *testing.T) {
 	if !cfg.RespectGitignore {
 		t.Error("respect_gitignore = false, want true")
 	}
-	if len(cfg.Rules) != 0 {
-		t.Errorf("rules = %v, want 空（層2 の既定は持たない）", cfg.Rules)
+	if len(cfg.Rules) != 1 {
+		t.Fatalf("rules = %v, want プリセット1件（init は現物を書き込んで吐く）", cfg.Rules)
+	}
+	r := cfg.Rules[0]
+	if r.ID != "no-history" {
+		t.Errorf("rules[0].id = %q, want no-history", r.ID)
+	}
+	if r.Message == "" {
+		t.Error("rules[0].message が空（違反の始末のしかたを言えない）")
+	}
+	if len(r.Where.Syntax) != 0 || len(r.Where.Kind) != 0 || len(r.Where.Path) != 0 {
+		t.Errorf("rules[0].where = %+v, want 省略（全エントリに当てる）", r.Where)
+	}
+	for _, s := range []string{"this used to", "かつて", "従来は"} {
+		if !r.Regexp.MatchString(s) {
+			t.Errorf("プリセットが %q に当たらない", s)
+		}
+	}
+	for _, s := range []string{"no longer needed", "is used to build the index", "従来どおり"} {
+		if r.Regexp.MatchString(s) {
+			t.Errorf("プリセットが %q に当たる（実測で偽陽性が支配的だった形）", s)
+		}
 	}
 }
 

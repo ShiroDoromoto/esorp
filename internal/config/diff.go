@@ -72,7 +72,7 @@ func Diff(local, tmpl *Config) []Section {
 		out = append(out, Section{Title: "disposition（違反時に提示する始末のしかた）", Changes: changes})
 	}
 	if changes := diffRules(local.Rules, tmpl.Rules); len(changes) > 0 {
-		out = append(out, Section{Title: "rules（層2 の語彙。テンプレートは既定を持たない）", Changes: changes})
+		out = append(out, Section{Title: "rules（層2 の語彙。プリセットは出発点で、消すのも足すのも自由）", Changes: changes})
 	}
 
 	var misc []Change
