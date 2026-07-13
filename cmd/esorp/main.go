@@ -44,6 +44,7 @@ const usage = `esorp — コメントの置き場所と書式を監査する
   esorp explain <file>:<line>  その行のコメントが、なぜ違反で、どう始末するのかを説明する
   esorp baseline update      既存の違反をスナップショットする（減る方向のみ）
   esorp lexicon --try <re>   層2 に足す前に、候補の語彙を自分のコーパスで測る
+  esorp review [<path>...]   層1・層2 を通り抜けたコメントを、問いを添えてまとめて渡す（層3）
   esorp agent                エージェント向けの入口（層3 に答えるのは、あなた）
   esorp help                 この使い方を表示する
 
@@ -87,6 +88,16 @@ lexicon のフラグ:
   真陽性か偽陽性かは判定しない——当たりを読んで決めるのは、あなた。違反ではないので、当たっても
   終了コードは 0。
 
+review のフラグ:
+  --config <path>   設定ファイルの場所（既定: esorp.yaml）。この場所がツリーの根になる
+  --format <fmt>    出力の形式（text | json、既定: json）
+
+  層1・層2 のどれにも当たらなかったコメントを、設定の review.question を添えて渡す口。
+  check --diff が「今書いたもの」を渡すのに対し、こちらは既にあるツリーを渡す——導入初日に、
+  既存のコメントを一度だけエージェントに読ませるためにある。<path> を与えると、そこに入る
+  コメントだけを渡す（ツリー全体を無制限に吐くと、読む側が破綻する）。
+  esorp は判定しない。だから違反も赤/緑も無く、終了コードは 0 のまま（層3 は CI に関与しない）。
+
 agent のフラグ:
   --format <fmt>    出力の形式（text | json、既定: text）
 
@@ -120,6 +131,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runBaseline(args[1:], stdout, stderr)
 	case "lexicon":
 		return runLexicon(args[1:], stdout, stderr)
+	case "review":
+		return runReview(args[1:], stdout, stderr)
 	case "agent":
 		return runAgent(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
@@ -259,7 +272,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		sel = ranges.Overlaps
 	}
 
-	a, code := scan(*configPath, sel, stderr)
+	a, code := scan(*configPath, sel, *diffMode, stderr)
 	if code != exitOK {
 		return code
 	}
@@ -329,7 +342,7 @@ func runExplain(args []string, stdout, stderr io.Writer) int {
 	sel := audit.Selection(func(p string, from, to int) bool {
 		return p == rel && from <= line && line <= to
 	})
-	a, code := scan(*configPath, sel, stderr)
+	a, code := scan(*configPath, sel, false, stderr)
 	if code != exitOK {
 		return code
 	}
@@ -454,7 +467,7 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 		return exitConfig
 	}
 
-	a, code := scan(*configPath, nil, stderr)
+	a, code := scan(*configPath, nil, false, stderr)
 	if code != exitOK {
 		return code
 	}
@@ -533,8 +546,70 @@ func runLexicon(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
-// audited は、設定を読んでツリーを走査した結果ひとまとめ。check / explain / baseline update が
-// 同じ道を通る。
+// runReview は、層1・層2 を通り抜けたコメントを、問いを添えてまとめて渡す。check --diff が「今
+// 書いたもの」をエージェントに渡すのに対し、こちらは既にあるツリーを渡す口——導入初日に、既存の
+// コメントを一度だけエージェントに読ませるためにある。判定しないので、当たり外れも赤/緑も無く、
+// 終了コードは 0 のまま（層3 は CI に関与しない。だから check とコマンドを分けてある）。
+// 引数にパスを与えると、そこに入るコメントだけを渡す。ツリー全体を無制限に吐くと、読む側が破綻する。
+func runReview(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("review", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", "esorp.yaml", "設定ファイルの場所")
+	format := fs.String("format", "json", "出力の形式（text | json）")
+	if err := fs.Parse(args); err != nil {
+		return exitConfig
+	}
+	if !knownFormat("review", *format, stderr) {
+		return exitConfig
+	}
+
+	sel := pathSelection(fs.Args())
+	a, code := scan(*configPath, sel, true, stderr)
+	if code != exitOK {
+		return code
+	}
+	if a.result.Review == nil {
+		fmt.Fprintln(stderr, "esorp review: 設定に review: がありません（層3 の口は開いていません）")
+		return exitConfig
+	}
+
+	if err := report.Warnings(stderr, a.result.Skipped); err != nil {
+		fmt.Fprintf(stderr, "esorp: %v\n", err)
+		return exitConfig
+	}
+	write := report.ReviewText
+	if *format == "json" {
+		write = report.ReviewJSON
+	}
+	if err := write(stdout, a.result.Review); err != nil {
+		fmt.Fprintf(stderr, "esorp: %v\n", err)
+		return exitConfig
+	}
+	return exitOK
+}
+
+// pathSelection は、引数に与えられたパス（ファイルまたはディレクトリ）に入るコメントだけを選ぶ。
+// 引数が無ければ nil を返す（ツリー全体）。
+func pathSelection(args []string) audit.Selection {
+	if len(args) == 0 {
+		return nil
+	}
+	prefixes := make([]string, 0, len(args))
+	for _, a := range args {
+		prefixes = append(prefixes, filepath.ToSlash(filepath.Clean(a)))
+	}
+	return func(path string, _, _ int) bool {
+		for _, p := range prefixes {
+			if path == p || strings.HasPrefix(path, p+"/") {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+// audited は、設定を読んでツリーを走査した結果ひとまとめ。check / explain / baseline update /
+// review が同じ道を通る。
 type audited struct {
 	cfg          *config.Config
 	result       *audit.Result
@@ -544,9 +619,9 @@ type audited struct {
 
 // scan は、設定を読み、ツリーを走査し、baseline を読む。設定ファイルの置かれた場所が、監査する
 // ツリーの根（設定の glob は、ここからの相対パスに当たる）。sel は監査するコメントの絞り込み
-// （--diff）で、nil なら絞らない。baseline はまだ効かせない（baseline update は、抑止する前の
-// 全違反を要る）。
-func scan(configPath string, sel audit.Selection, stderr io.Writer) (*audited, int) {
+// （--diff / review のパス指定）で、nil なら絞らない。review は層3 の口を開くかどうか。baseline は
+// まだ効かせない（baseline update は、抑止する前の全違反を要る）。
+func scan(configPath string, sel audit.Selection, review bool, stderr io.Writer) (*audited, int) {
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -554,7 +629,7 @@ func scan(configPath string, sel audit.Selection, stderr io.Writer) (*audited, i
 	}
 
 	root := filepath.Dir(configPath)
-	res, err := audit.Run(cfg, root, sel)
+	res, err := audit.Run(cfg, root, sel, review)
 	if err != nil {
 		fmt.Fprintf(stderr, "esorp: %v\n", err)
 		return nil, exitConfig

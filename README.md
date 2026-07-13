@@ -53,6 +53,7 @@ esorp check --diff [<ref>]    # 変更分だけを監査する（既定の <ref>
 esorp explain <file>:<line>   # その行が、なぜ違反で、どう始末するのかを説明する
 esorp baseline update         # 今ある違反をスナップショットする（減る方向のみ）
 esorp lexicon --try <re>      # 層2 に足す前に、候補の語彙を自分のコーパスで測る
+esorp review [<path>...]      # 層1・層2 を通り抜けたコメントを、問いを添えて渡す（層3）
 esorp agent                   # エージェント向けの入口
 ```
 
@@ -253,6 +254,18 @@ esorp check --diff --format json
 
 問いは**二値で答えられる**ものにしてください。カテゴリ（履歴 / 作業メモ / 判断）に分けさせると、
 決定論で解けなかった分類問題を、確率的な機械に押し付けることになります。
+
+`check --diff` が渡すのは「今書いたもの」だけです。**導入初日に、既にあるコメントを一度だけ読ませ
+たい**なら `esorp review` を使います。
+
+```sh
+esorp review                  # ツリー全体の、通り抜けたコメントを全部渡す
+esorp review internal/scan/   # パスで絞る（多すぎると読む側が破綻します）
+esorp review --format text    # 人が眺めるとき
+```
+
+判定しないので、**終了コードは常に 0** です（層3 は CI に関与しません。だから `check` とコマンドが
+分かれています）。
 
 ## エージェントに使わせる
 

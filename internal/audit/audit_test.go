@@ -29,7 +29,7 @@ func run(t *testing.T, root string) *Result {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := Run(cfg, root, nil)
+	res, err := Run(cfg, root, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}

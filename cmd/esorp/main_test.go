@@ -944,6 +944,91 @@ func TestCheckReviewClosedByDefault(t *testing.T) {
 	}
 }
 
+// TestReview は、esorp review が、ツリー全体の「層1・層2 を通り抜けたコメント」を問いごと渡す
+// ことを確かめる。check --diff が「今書いたもの」を渡すのに対し、こちらは既にあるツリーを渡す
+// （導入初日の一括レビュー）。判定しないので、違反があっても終了コードは 0 のまま。testSource で
+// 層1 を通るのは header と doc の2つで、leading / orphan / ラベル無しの trailing は違反なので
+// 層3 には回らない。
+func TestReview(t *testing.T) {
+	cfgPath := tree(t, reviewConfig, testSource)
+
+	var stdout strings.Builder
+	if got := run([]string{"review", "--config", cfgPath}, &stdout, io.Discard); got != exitOK {
+		t.Fatalf("review = %d, want %d（層3 は CI に関与しない）\n%s", got, exitOK, stdout.String())
+	}
+
+	var got struct {
+		Question string `json:"question"`
+		Summary  struct {
+			Comments int `json:"comments"`
+		} `json:"summary"`
+		Comments []struct {
+			Place string `json:"place"`
+			Text  string `json:"text"`
+		} `json:"comments"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &got); err != nil {
+		t.Fatalf("JSON として読めない: %v\n%s", err, stdout.String())
+	}
+
+	if !strings.Contains(got.Question, "目の前のコードの説明ですか") {
+		t.Errorf("問いが添えられていない: %q", got.Question)
+	}
+	if got.Summary.Comments != 2 || len(got.Comments) != 2 {
+		t.Fatalf("渡されたコメント = %d 件（summary %d）, want 2: %+v", len(got.Comments), got.Summary.Comments, got.Comments)
+	}
+	for _, c := range got.Comments {
+		if c.Place != "header" && c.Place != "doc" {
+			t.Errorf("違反したコメントが層3 に回っている: %+v", c)
+		}
+	}
+}
+
+// TestReviewPathFilter は、パスを与えると、そこに入るコメントだけが渡ることを確かめる。ツリー全体を
+// 無制限に吐くと、読む側が破綻する。
+func TestReviewPathFilter(t *testing.T) {
+	cfgPath := tree(t, reviewConfig, testSource)
+	dir := filepath.Dir(cfgPath)
+
+	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "sub", "b.go"), []byte("// B は何かをする。\npackage b\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout strings.Builder
+	if got := run([]string{"review", "--config", cfgPath, "sub"}, &stdout, io.Discard); got != exitOK {
+		t.Fatalf("review sub = %d, want %d\n%s", got, exitOK, stdout.String())
+	}
+
+	var got struct {
+		Comments []struct {
+			Path string `json:"path"`
+		} `json:"comments"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &got); err != nil {
+		t.Fatalf("JSON として読めない: %v\n%s", err, stdout.String())
+	}
+	if len(got.Comments) != 1 || got.Comments[0].Path != "sub/b.go" {
+		t.Fatalf("パスで絞れていない: %+v", got.Comments)
+	}
+}
+
+// TestReviewClosedWithoutQuestion は、設定に review: が無ければ層3 の口が開かないことを確かめる
+// （ツールは既定の問いを持たない）。開いていない口を、空の材料で開いているように見せない。
+func TestReviewClosedWithoutQuestion(t *testing.T) {
+	cfgPath := tree(t, testConfig, testSource)
+
+	var stdout, stderr strings.Builder
+	if got := run([]string{"review", "--config", cfgPath}, &stdout, &stderr); got != exitConfig {
+		t.Fatalf("review = %d, want %d（設定に review: が無い）\n%s", got, exitConfig, stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "review:") {
+		t.Errorf("何が足りないのかを言っていない: %q", stderr.String())
+	}
+}
+
 // TestInitDiffJSON は、差分が機械可読で出ること——どのキーが手元とテンプレートで何と何か、まで
 // 引けることを押さえる（差分を読むのは人とはかぎらない）。引くのは、テンプレートだけが持つ項目・
 // 両方にあって値が違う項目・テンプレートにしか無いエントリの3つ。

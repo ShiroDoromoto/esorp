@@ -46,9 +46,8 @@ type Result struct {
 	Skipped   []string
 	Baselined int
 
-	// Review は層3 に渡す材料。設定に review: があり、かつ監査するコメントを絞っている
-	// （check --diff）ときだけ入る。ツリー全体の「通り抜けたコメント」を毎回エージェントに渡しても
-	// 読み切れないし、今書いたものでもない。nil なら層3 の口は開いていない。
+	// Review は層3 に渡す材料。設定に review: があり、かつ呼び手が開いたときだけ入る。
+	// nil なら層3 の口は開いていない。
 	Review *Review
 }
 
@@ -105,15 +104,18 @@ func (s Selection) covers(path string, from, to int) bool {
 }
 
 // Run は、root の下のファイルを設定に照らして監査する。sel が非 nil なら、それに重なる
-// コメントだけを監査する（Files / Comments も、絞った後の数を数える）。返すエラーは
-// ファイルが読めない類のものだけで、違反は Result に載る（違反はエラーではない）。baseline は
-// ここでは効かせない（呼び手が Suppress を呼ぶ）。baseline update は、抑止する前の全違反を要る。
-// 違反はパス → 行 → 桁 → id の順に並べる（1つのコメントが複数の書式に反することがあり、id まで
-// 見ないと並びが揺れる）。
-func Run(cfg *config.Config, root string, sel Selection) (*Result, error) {
+// コメントだけを監査する（Files / Comments も、絞った後の数を数える）。review を立てると、層1・層2
+// を通り抜けたコメントが Result.Review に載る（設定に review: があるときに限る）。開けるかどうかを
+// 呼び手に委ねてあるのは、層3 を渡す先が2つあるため——書いている最中のエージェント（check --diff）と、
+// 導入初日にツリー全体を読むエージェント（review）。check がツリー全体で層3 を開くことはない。
+// 返すエラーはファイルが読めない類のものだけで、違反は Result に載る（違反はエラーではない）。
+// baseline はここでは効かせない（呼び手が Suppress を呼ぶ）。baseline update は、抑止する前の
+// 全違反を要る。違反はパス → 行 → 桁 → id の順に並べる（1つのコメントが複数の書式に反することが
+// あり、id まで見ないと並びが揺れる）。
+func Run(cfg *config.Config, root string, sel Selection, review bool) (*Result, error) {
 	res := &Result{Findings: []Finding{}}
 
-	if cfg.Review != nil && sel != nil {
+	if cfg.Review != nil && review {
 		res.Review = &Review{Question: cfg.Review.Question, Comments: []Passed{}}
 	}
 
