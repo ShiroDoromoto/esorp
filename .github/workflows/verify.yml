@@ -35,3 +35,38 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.WHARFY_GITHUB_TOKEN }}
         run: wharfy verify --install
+
+  # 配った GitHub Action も「配ったもの」のひとつ。消費者と同じ書き方（uses:）で使う。
+  # verify とは別の job に置く。同じ job だと wharfy が入れた esorp が PATH に残り、
+  # action 自身が入れられたのかどうかが見分けられない。
+  #
+  # ここで見ていないもの: pull_request のときの分岐（esorp check --diff origin/<base>）。
+  # GITHUB_BASE_REF は PR でしか埋まらず、このリポジトリは PR を通さない。そこだけは
+  # 使い捨てのリポジトリで見るしかない。
+  action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # detach したあとの `uses: ./` は、配った版の action そのものを指す
+      # （ローカル action は workspace から読まれる）。
+      - name: 直近のタグに合わせる
+        id: tag
+        run: |
+          tag=$(git describe --tags --abbrev=0)
+          echo "確かめる版: $tag"
+          git checkout --detach "$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      # 既定のまま（version: latest / args 空 / GITHUB_BASE_REF なし）= ツリー全体を見る
+      - name: 既定のまま使う
+        uses: ./
+
+      # 版を名指しして入れ、引数を渡す
+      - name: 版と引数を渡して使う
+        uses: ./
+        with:
+          version: ${{ steps.tag.outputs.tag }}
+          args: check --format json

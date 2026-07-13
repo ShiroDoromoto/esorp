@@ -4,7 +4,7 @@ author: ShiroDoromoto
 
 branding:
   icon: message-square
-  color: gray
+  color: gray-dark
 
 # 使う側のワークフローにこう書く（linux / macOS ランナー）:
 #
