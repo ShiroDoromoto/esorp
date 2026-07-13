@@ -42,6 +42,7 @@ const usage = `esorp — コメントの置き場所と書式を監査する
   esorp check --diff [<ref>] 変更分のみ監査する（既定の <ref> は origin/HEAD）
   esorp explain <file>:<line>  その行のコメントが、なぜ違反で、どう始末するのかを説明する
   esorp baseline update      既存の違反をスナップショットする（減る方向のみ）
+  esorp agent                エージェント向けの入口（層3 に答えるのは、あなた）
   esorp help                 この使い方を表示する
 
 init のフラグ:
@@ -74,6 +75,12 @@ baseline update のフラグ:
   --config <path>   設定ファイルの場所（既定: esorp.yaml）
   --allow-new       今ある違反を新しく baseline に載せる。CI では使わない
 
+agent のフラグ:
+  --format <fmt>    出力の形式（text | json、既定: text）
+
+  esorp を走らせている AI エージェントが読む口。三層のどこを誰が答えるか、どのコマンドを
+  いつ使うか、出力のどこを見るかを、一箇所にまとめて出す。
+
 終了コード:
   0  適合
   1  違反あり
@@ -99,6 +106,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runExplain(args[1:], stdout, stderr)
 	case "baseline":
 		return runBaseline(args[1:], stdout, stderr)
+	case "agent":
+		return runAgent(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		fmt.Fprint(stdout, usage)
 		return exitOK
