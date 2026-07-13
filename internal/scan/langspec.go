@@ -2,6 +2,7 @@ package scan
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -382,87 +383,75 @@ func PowerShellSpec() LangSpec {
 	return spec
 }
 
-// SpecFor は、ファイルの名前からその言語の字句を選ぶ。拡張子だけでは足りないのは、拡張子を持たない
-// ファイル（Makefile / Dockerfile / .gitignore）があるため。設定の files: は glob なので、字句を
-// 持たない拡張子をファミリに並べることもできる。持っていないことを黙って飲み込むと、そのファイルは
-// 検査されないまま適合したように見えるので、引けなかったことを呼び手に返し、呼び手が告げる。
-func SpecFor(path string) (LangSpec, bool) {
-	switch filepath.Base(path) {
-	case "Makefile", "makefile", "GNUmakefile":
-		return MakeSpec(), true
-	case "Dockerfile":
-		return DockerSpec(), true
-	case ".gitignore", ".dockerignore":
-		return GitignoreSpec(), true
-	}
-
-	switch filepath.Ext(path) {
-	case ".go":
-		return GoSpec(), true
-	case ".rs":
-		return RustSpec(), true
-	case ".ts", ".mts", ".cts":
-		return TSSpec(), true
-	case ".tsx":
-		return TSXSpec(), true
-	case ".js", ".mjs", ".cjs":
-		return JSSpec(), true
-	case ".jsx":
-		return JSXSpec(), true
-	case ".css":
-		return CSSSpec(), true
-	case ".html", ".htm", ".svg", ".xml", ".md":
-		return SGMLSpec(), true
-	case ".sh", ".bash", ".zsh":
-		return ShellSpec(), true
-	case ".mk":
-		return MakeSpec(), true
-	case ".yml", ".yaml":
-		return YAMLSpec(), true
-	case ".toml":
-		return TOMLSpec(), true
-	case ".ps1", ".psm1":
-		return PowerShellSpec(), true
-	}
-	return LangSpec{}, false
-}
-
-// FamilySpec は、構文ファミリの既定の字句。名前からも拡張子からも引けないファイル
-// （.githooks/pre-commit）を、設定が files: で当てたエントリのファミリから読むためのもの。
-// cstyle が既定を持たないのは、コメント記号は共通でも、器の判定が言語ごとの宣言の語彙に依るため。
-// 取り違えた語彙で位置クラスを決めると、doc でないコメントが doc を名乗り、書式の検査が誤爆する。
-func FamilySpec(family string) (LangSpec, bool) {
-	switch family {
-	case "hash":
-		return ShellSpec(), true
-	case "sgml":
-		return SGMLSpec(), true
-	case "cssblock":
-		return CSSSpec(), true
-	}
-	return LangSpec{}, false
-}
-
-// langs は、名指しできる字句と、その字句が属する構文ファミリ。設定の lang: はここから引く。
+// langs は字句の登録簿。字句を足すのはここ1箇所で、どのファミリに属し、どの拡張子・どのファイル名の
+// ファイルをその字句で読み、ファミリの既定になるかまでを1行で書く。SpecFor / SpecByName /
+// LangFamily / LangNames / FamilySpec はすべてこの表から引くので、拡張子から読めるのに lang: で
+// 名指しできない字句や、名指しできるのに拡張子から読めない字句は、書こうとしても書けない。
 var langs = []struct {
 	family string
 	spec   func() LangSpec
+
+	// exts は、この字句で読む拡張子。
+	exts []string
+
+	// names は、この字句で読むファイル名。拡張子を持たないファイル（Makefile / Dockerfile）と、
+	// 名前がまるごと拡張子に見えるファイル（.gitignore）のために要る。
+	names []string
+
+	// familyDefault は、ファミリの既定の字句か。名前からも拡張子からも引けないファイル
+	// （.githooks/pre-commit）を、設定が files: で当てたエントリのファミリから読むためのもの。
+	// cstyle にこれを持つ字句が無いのは、コメント記号は共通でも、器の判定が言語ごとの宣言の語彙に
+	// 依るため。取り違えた語彙で位置クラスを決めると、doc でないコメントが doc を名乗り、書式の検査が
+	// 誤爆する。
+	familyDefault bool
 }{
-	{"cstyle", GoSpec},
-	{"cstyle", RustSpec},
-	{"cstyle", TSSpec},
-	{"cstyle", TSXSpec},
-	{"cstyle", JSSpec},
-	{"cstyle", JSXSpec},
-	{"cssblock", CSSSpec},
-	{"sgml", SGMLSpec},
-	{"hash", ShellSpec},
-	{"hash", YAMLSpec},
-	{"hash", TOMLSpec},
-	{"hash", MakeSpec},
-	{"hash", DockerSpec},
-	{"hash", GitignoreSpec},
-	{"hash", PowerShellSpec},
+	{family: "cstyle", spec: GoSpec, exts: []string{".go"}},
+	{family: "cstyle", spec: RustSpec, exts: []string{".rs"}},
+	{family: "cstyle", spec: TSSpec, exts: []string{".ts", ".mts", ".cts"}},
+	{family: "cstyle", spec: TSXSpec, exts: []string{".tsx"}},
+	{family: "cstyle", spec: JSSpec, exts: []string{".js", ".mjs", ".cjs"}},
+	{family: "cstyle", spec: JSXSpec, exts: []string{".jsx"}},
+	{family: "cssblock", spec: CSSSpec, exts: []string{".css"}, familyDefault: true},
+	{family: "sgml", spec: SGMLSpec, exts: []string{".html", ".htm", ".svg", ".xml", ".md"}, familyDefault: true},
+	{family: "hash", spec: ShellSpec, exts: []string{".sh", ".bash", ".zsh"}, familyDefault: true},
+	{family: "hash", spec: YAMLSpec, exts: []string{".yml", ".yaml"}},
+	{family: "hash", spec: TOMLSpec, exts: []string{".toml"}},
+	{family: "hash", spec: MakeSpec, exts: []string{".mk"}, names: []string{"Makefile", "makefile", "GNUmakefile"}},
+	{family: "hash", spec: DockerSpec, names: []string{"Dockerfile"}},
+	{family: "hash", spec: GitignoreSpec, names: []string{".gitignore", ".dockerignore"}},
+	{family: "hash", spec: PowerShellSpec, exts: []string{".ps1", ".psm1"}},
+}
+
+// SpecFor は、ファイルの名前からその言語の字句を選ぶ。名前で先に引くのは、拡張子を持たないファイル
+// （Makefile / Dockerfile）と、名前がまるごと拡張子に見えるファイル（.gitignore の Ext は
+// ".gitignore"）があるため。設定の files: は glob なので、字句を持たない拡張子をファミリに並べる
+// こともできる。持っていないことを黙って飲み込むと、そのファイルは検査されないまま適合したように
+// 見えるので、引けなかったことを呼び手に返し、呼び手が告げる。
+func SpecFor(path string) (LangSpec, bool) {
+	base := filepath.Base(path)
+	for _, l := range langs {
+		if slices.Contains(l.names, base) {
+			return l.spec(), true
+		}
+	}
+
+	ext := filepath.Ext(path)
+	for _, l := range langs {
+		if slices.Contains(l.exts, ext) {
+			return l.spec(), true
+		}
+	}
+	return LangSpec{}, false
+}
+
+// FamilySpec は、構文ファミリの既定の字句。
+func FamilySpec(family string) (LangSpec, bool) {
+	for _, l := range langs {
+		if l.familyDefault && l.family == family {
+			return l.spec(), true
+		}
+	}
+	return LangSpec{}, false
 }
 
 // SpecByName は、字句をその名前で引く（設定の lang:）。名前からも拡張子からも引けないファイルを、
