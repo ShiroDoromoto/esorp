@@ -370,11 +370,9 @@ func (s *lexer) tryString() bool {
 			continue
 		}
 		if sp.Interp != "" {
-			s.template(sp, n)
-			return true
+			return s.template(sp, n)
 		}
-		s.stringLit(sp, n, close)
-		return true
+		return s.stringLit(sp, n, close)
 	}
 	return false
 }
@@ -383,7 +381,8 @@ func (s *lexer) tryString() bool {
 // なので、文字列として飲み込むことはできない（中にコメントも文字列も現れうるし、そこに現れた
 // 「}」がテンプレートを閉じるとも限らない）。そこで、文字列の部分を片ごとに出し、補間の中は
 // スキャナ本体を回し直して読む。テンプレートの入れ子は、その再帰で解ける。
-func (s *lexer) template(sp StringSpec, n int) {
+func (s *lexer) template(sp StringSpec, n int) bool {
+	m := s.snapshot()
 	start, line, col := s.pos, s.line, s.col()
 	s.pos += n
 
@@ -406,12 +405,26 @@ func (s *lexer) template(sp StringSpec, n int) {
 		case s.has(sp.Close):
 			s.pos += len(sp.Close)
 			s.emit(KindString, line, col, s.line, string(s.src[start:s.pos]))
-			return
+			return true
 		default:
 			s.pos++
 		}
 	}
+	return s.unclosed(sp, m, start, line, col)
+}
+
+// unclosed は、閉じが最後まで現れなかった文字列を始末する。改行を含められる形（Multiline）なら、
+// 開きの読み違いなので、1バイトも読まずに戻る（false）。読み違えたまま末尾まで飲み込むと、その先に
+// ある本物のコメントが文字列の中に消え、検査されないまま通る。迷ったら違反にする側へ倒す——
+// ヒアドキュメント（heredocBody）と同じ判断であり、ここで揃う。改行を含められない形は、その行の中で
+// 閉じ忘れているだけで飲み込む先が無いので、読んだところまでを文字列として出す。
+func (s *lexer) unclosed(sp StringSpec, m mark, start, line, col int) bool {
+	if sp.Multiline {
+		s.restore(m)
+		return false
+	}
 	s.emit(KindString, line, col, s.line, string(s.src[start:s.pos]))
+	return true
 }
 
 // interp は、補間の中をコードとして読み、対応する「}」の手前で戻る（その「}」は、続く
@@ -464,7 +477,8 @@ func (s *lexer) closes(sp StringSpec, close string) bool {
 // stringLit は、開きの長さ n と、それに対応する閉じ記号を受けて文字列リテラルを1つ読む
 // （閉じ記号が開きに依るのは Rust の r#"…"# のような可変長の区切りがあるため）。改行を含められない
 // 形が閉じずに行末に来たら、不正なソースなので、そこで打ち切る。
-func (s *lexer) stringLit(sp StringSpec, n int, close string) {
+func (s *lexer) stringLit(sp StringSpec, n int, close string) bool {
+	m := s.snapshot()
 	start, line, col := s.pos, s.line, s.col()
 	s.pos += n
 
@@ -474,7 +488,7 @@ func (s *lexer) stringLit(sp StringSpec, n int, close string) {
 		case c == '\n':
 			if !sp.Multiline {
 				s.emit(KindString, line, col, s.line, string(s.src[start:s.pos]))
-				return
+				return true
 			}
 			s.newline()
 		case sp.Escape && c == '\\' && s.pos+1 < len(s.src):
@@ -487,12 +501,12 @@ func (s *lexer) stringLit(sp StringSpec, n int, close string) {
 		case s.closes(sp, close):
 			s.pos += len(close)
 			s.emit(KindString, line, col, s.line, string(s.src[start:s.pos]))
-			return
+			return true
 		default:
 			s.pos++
 		}
 	}
-	s.emit(KindString, line, col, s.line, string(s.src[start:s.pos]))
+	return s.unclosed(sp, m, start, line, col)
 }
 
 // tryRegex は、現在位置が正規表現リテラルの開きなら、それを1つ読む。引用符を含む正規表現

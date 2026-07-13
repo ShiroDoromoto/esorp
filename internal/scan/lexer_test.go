@@ -182,3 +182,62 @@ func TestScanKeepsCodeTokens(t *testing.T) {
 		t.Errorf("tokens = %q, want %q", strings.Join(got, " "), want)
 	}
 }
+
+// TestScanUnclosedMultilineString は、閉じが最後まで現れない複数行文字列が、その先にある本物の
+// コメントを飲み込まないことを押さえる。飲み込むと、そのコメントは検査されないまま通る（偽陰性）。
+// 読み違えた開きは1バイトも読まず、中身はコードとして読み直す——ヒアドキュメントと同じ判断。
+func TestScanUnclosedMultilineString(t *testing.T) {
+	tests := []struct {
+		name string
+		spec LangSpec
+		src  string
+		want []want
+	}{
+		{
+			name: "PowerShell: 閉じ忘れのヒアストリング",
+			spec: PowerShellSpec(),
+			src:  "$s = @\"\n中身\n# かつての事情\n",
+			want: []want{
+				{line: 3, endLine: 3, col: 1, kind: KindLine, text: "# かつての事情"},
+			},
+		},
+		{
+			name: "Rust: 閉じ忘れの生文字列",
+			spec: RustSpec(),
+			src:  "let s = r\"中身\n// かつての事情\n",
+			want: []want{
+				{line: 2, endLine: 2, col: 1, kind: KindLine, text: "// かつての事情"},
+			},
+		},
+		{
+			name: "TS: 閉じ忘れのテンプレートリテラル",
+			spec: TSSpec(),
+			src:  "const s = `中身\n// かつての事情\n",
+			want: []want{
+				{line: 2, endLine: 2, col: 1, kind: KindLine, text: "// かつての事情"},
+			},
+		},
+		{
+			name: "TS: 補間まで読んだところで閉じ忘れたテンプレートリテラル",
+			spec: TSSpec(),
+			src:  "const s = `${x} 中身\n// かつての事情\n",
+			want: []want{
+				{line: 2, endLine: 2, col: 1, kind: KindLine, text: "// かつての事情"},
+			},
+		},
+		{
+			name: "改行を含められない形の閉じ忘れは、飲み込む先が無い",
+			spec: GoSpec(),
+			src:  "s := \"中身\n// 本物\n",
+			want: []want{
+				{line: 2, endLine: 2, col: 1, kind: KindLine, text: "// 本物"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			checkComments(t, comments(Scan([]byte(tt.src), tt.spec)), tt.want)
+		})
+	}
+}
