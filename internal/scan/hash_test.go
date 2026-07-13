@@ -243,3 +243,79 @@ func TestSpecForNames(t *testing.T) {
 		})
 	}
 }
+
+// TestScanShebang は、1行目の shebang がコメントとして読まれないことを押さえる。shebang は
+// カーネルへの指示であって、本文ではない。これをコメントとして読むと、直後に置かれた冒頭の
+// コメントと1つの器に繋がり、header をこれが占めてしまう。
+func TestScanShebang(t *testing.T) {
+	tests := []struct {
+		name string
+		spec LangSpec
+		src  string
+		want []want
+	}{
+		{
+			name: "shebang はコメントにならず、直後のコメントとも繋がらない",
+			spec: ShellSpec(),
+			src:  "#!/bin/sh\n# 説明\nls\n",
+			want: []want{
+				{line: 2, endLine: 2, col: 1, kind: KindLine, text: "# 説明"},
+			},
+		},
+		{
+			name: "#! と パスの間に空白があってもよい",
+			spec: ShellSpec(),
+			src:  "#! /usr/bin/env bash\n# 説明\n",
+			want: []want{
+				{line: 2, endLine: 2, col: 1, kind: KindLine, text: "# 説明"},
+			},
+		},
+		{
+			name: "2行目以降の #! はただのコメント",
+			spec: ShellSpec(),
+			src:  "# 頭\n#!/bin/sh\n",
+			want: []want{
+				{line: 1, endLine: 1, col: 1, kind: KindLine, text: "# 頭"},
+				{line: 2, endLine: 2, col: 1, kind: KindLine, text: "#!/bin/sh"},
+			},
+		},
+		{
+			name: "Rust の内側属性は shebang ではない（パスが続かない）",
+			spec: RustSpec(),
+			src:  "#![allow(dead_code)]\n//! クレートの説明\n",
+			want: []want{
+				{line: 2, endLine: 2, col: 1, kind: KindDocLine, text: "//! クレートの説明"},
+			},
+		},
+		{
+			name: "hash ファミリ以外の shebang も飲む（node の CLI）",
+			spec: TSSpec(),
+			src:  "#!/usr/bin/env node\n// 説明\nmain()\n",
+			want: []want{
+				{line: 2, endLine: 2, col: 1, kind: KindLine, text: "// 説明"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			checkComments(t, comments(Scan([]byte(tt.src), tt.spec)), tt.want)
+		})
+	}
+}
+
+// TestShebangToken は、shebang が1行まるごと1つのトークンとして出ること、そしてそれがコメント
+// でもコードでもないことを押さえる。
+func TestShebangToken(t *testing.T) {
+	toks := Scan([]byte("#!/bin/sh\nls\n"), ShellSpec())
+	if len(toks) == 0 {
+		t.Fatal("トークンが1つも無い")
+	}
+	got := toks[0]
+	if got.Kind != KindShebang || got.Line != 1 || got.Col != 1 || got.Text != "#!/bin/sh" {
+		t.Errorf("toks[0] = {%v %d:%d %q}, want {shebang 1:1 %q}", got.Kind, got.Line, got.Col, got.Text, "#!/bin/sh")
+	}
+	if got.Kind.IsComment() || got.Kind.IsCode() {
+		t.Error("shebang はコメントでもコードでもない")
+	}
+}

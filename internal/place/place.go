@@ -331,7 +331,7 @@ func adjacent(toks []scan.Token, i int) bool {
 
 func prevCode(toks []scan.Token, i int) *scan.Token {
 	for j := i - 1; j >= 0; j-- {
-		if !toks[j].Kind.IsComment() {
+		if toks[j].Kind.IsCode() {
 			return &toks[j]
 		}
 	}
@@ -340,7 +340,7 @@ func prevCode(toks []scan.Token, i int) *scan.Token {
 
 func nextCode(toks []scan.Token, i int) (*scan.Token, int) {
 	for j := i + 1; j < len(toks); j++ {
-		if !toks[j].Kind.IsComment() {
+		if toks[j].Kind.IsCode() {
 			return &toks[j], j
 		}
 	}

@@ -295,3 +295,45 @@ func TestClassifyGo(t *testing.T) {
 		})
 	}
 }
+
+// TestClassifyShebang は、shebang の直後に置かれたコメントが header を名乗れることを押さえる。
+// shebang をコードと数えると「前にコードがある」ことになり、冒頭のコメントが header から
+// 転げ落ちて orphan や leading になってしまう。
+func TestClassifyShebang(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want []want
+	}{
+		{
+			name: "shebang の直後のコメントは header",
+			src: "#!/bin/sh\n" +
+				"# このスクリプトは何かをする。\n" +
+				"ls -l\n",
+			want: []want{{line: 2, endLine: 2, place: Header, text: "# このスクリプトは何かをする。"}},
+		},
+		{
+			name: "shebang と冒頭コメントの間に空行があっても header",
+			src: "#!/bin/sh\n" +
+				"\n" +
+				"# このスクリプトは何かをする。\n" +
+				"ls -l\n",
+			want: []want{{line: 3, endLine: 3, place: Header, text: "# このスクリプトは何かをする。"}},
+		},
+		{
+			name: "コードの後ろのコメントは、shebang があっても header ではない",
+			src: "#!/bin/sh\n" +
+				"ls -l\n" +
+				"\n" +
+				"# 後から足した事情\n" +
+				"rm -rf tmp\n",
+			want: []want{{line: 4, endLine: 4, place: Leading, text: "# 後から足した事情"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			check(t, tt.src, scan.ShellSpec(), tt.want)
+		})
+	}
+}

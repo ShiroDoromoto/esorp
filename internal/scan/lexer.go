@@ -69,6 +69,7 @@ func (s *lexer) scanOnce() {
 		}
 	case c == ' ' || c == '\t' || c == '\r':
 		s.pos++
+	case s.tryShebang():
 	case s.tryComment():
 	case s.tryString():
 	case s.tryRegex():
@@ -76,6 +77,31 @@ func (s *lexer) scanOnce() {
 	default:
 		s.wordOrPunct()
 	}
+}
+
+// tryShebang は、ファイルの1行目に立つ shebang（#!/bin/sh）を1つのトークンとして読む。「#」で
+// コメントを開く言語では、これをコメントとして読むと、直後に置かれた冒頭のコメントと1つの器に
+// 繋がり、header をこれが占めてしまう。shebang はカーネルへの指示であって、本文でもコードでもない。
+// ただし「#!」で始まるだけでは足りず、Rust の内側属性（#![allow(…)]）も同じ2字で始まるので、
+// 後ろに実行するものへのパスが続くこと——空白を挟んでもよい「/」——まで見て分ける。
+func (s *lexer) tryShebang() bool {
+	if s.pos != 0 || !s.has("#!") {
+		return false
+	}
+	p := s.pos + 2
+	for p < len(s.src) && (s.src[p] == ' ' || s.src[p] == '\t') {
+		p++
+	}
+	if p >= len(s.src) || s.src[p] != '/' {
+		return false
+	}
+
+	start, line, col := s.pos, s.line, s.col()
+	for s.pos < len(s.src) && s.src[s.pos] != '\n' {
+		s.pos++
+	}
+	s.emit(KindShebang, line, col, line, strings.TrimSuffix(string(s.src[start:s.pos]), "\r"))
+	return true
 }
 
 // tryComment は、現在位置がコメントの開きなら、その1つを読む。doc 記法は行/ブロックコメント記法を
@@ -395,10 +421,10 @@ func (s *lexer) exprCanStart() bool {
 	return true
 }
 
-// lastCode は、直前の非コメントトークンを返す（無ければ nil）。
+// lastCode は、直前のコードトークンを返す（無ければ nil）。
 func (s *lexer) lastCode() *Token {
 	for i := len(s.toks) - 1; i >= 0; i-- {
-		if !s.toks[i].Kind.IsComment() {
+		if s.toks[i].Kind.IsCode() {
 			return &s.toks[i]
 		}
 	}

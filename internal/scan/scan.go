@@ -1,6 +1,6 @@
 // Package scan は、ソースを字句に分解し、コメントと文字列リテラルを見分ける。
-// 言語ごとの差分（生文字列・ブロックコメントのネスト・doc 記法）は LangSpec が吸収し、
-// ファミリ（cstyle など）ごとにスキャナを持つ。
+// スキャナは1つで、言語ごとの差分（生文字列・ブロックコメントのネスト・doc 記法）も
+// ファミリ（cstyle / hash / sgml / cssblock）の差も、すべて LangSpec が吸収する。
 package scan
 
 // Kind はトークンの種別。コメント以外のトークン（Word / Punct / String）も落とさずに返すのは、
@@ -30,6 +30,9 @@ const (
 	// KindString は、中身をコードとして読まないもの（文字列・ルーン・生文字列のリテラル、
 	// 正規表現リテラル、JSX のテキスト）。
 	KindString
+
+	// KindShebang は1行目の「#!…」。コメントでもコードでもない、カーネルへの指示。
+	KindShebang
 )
 
 func (k Kind) String() string {
@@ -48,6 +51,8 @@ func (k Kind) String() string {
 		return "punct"
 	case KindString:
 		return "string"
+	case KindShebang:
+		return "shebang"
 	default:
 		return "unknown"
 	}
@@ -56,6 +61,13 @@ func (k Kind) String() string {
 // IsComment は、この種別が4種のコメントのいずれかであることを表す。
 func (k Kind) IsComment() bool {
 	return k == KindLine || k == KindBlock || k == KindDocLine || k == KindDocBlock
+}
+
+// IsCode は、この種別がコードの一部であることを表す。コメントと shebang だけがコードではない。
+// shebang をコードとして数えると、その直後に置かれたファイル冒頭のコメントが header を名乗れなく
+// なる（前にコードがあることになる）ので、前後のトークンを見るときは、無かったものとして飛ばす。
+func (k Kind) IsCode() bool {
+	return !k.IsComment() && k != KindShebang
 }
 
 // Token は1つの字句。Line / Col は 1 始まりで、Col はその行の先頭からのバイト数で数える。
