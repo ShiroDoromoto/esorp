@@ -21,7 +21,7 @@ func diffOf(t *testing.T, body string) string {
 	var b strings.Builder
 	for _, s := range Diff(local, tmpl) {
 		b.WriteString(s.Title + "\n")
-		for _, line := range s.Lines {
+		for _, line := range s.Lines() {
 			b.WriteString("  " + line + "\n")
 		}
 	}
