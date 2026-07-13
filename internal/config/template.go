@@ -169,6 +169,8 @@ respect_gitignore: true
 #   - 専用句でも、言い方が広すぎれば同じことが起きます。英語の "used to" は 93% が「〜するために
 #     使われる」という目的の用法で、主語を前に置いて初めて履歴だけを指しました。"no longer" は
 #     「今そうでない状態」の記述が支配的で、安い正規表現では救えません
+#   - 「以前」も素で当てると半分以上が偽陽性でした（「v2 以前の形式」＝互換の境界）。係助詞「は」を
+#     伴い、かつ直前が文頭・句読点・空白のときだけが履歴を指しました
 #
 # 誤検知するガードは例外指定を誘発し、やがてツールごと無視されます。稀なら足さない方がまし。
 #
@@ -189,7 +191,7 @@ respect_gitignore: true
 #
 # rules:
 #   - id: no-history
-#     pattern: '(?i)(we|it|this|that|they|these|those|which|there)\s+used\s+to|かつて|従来は'
+#     pattern: '(?i)(we|it|this|that|they|these|those|which|there)\s+used\s+to|かつて|従来は|(^|[\s。、（(「『:：・])以前は'
 #     message: |
 #       変化を語っています。今のコードが何であるかだけを書いてください。
 #     where:

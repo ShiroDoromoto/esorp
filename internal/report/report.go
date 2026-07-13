@@ -16,7 +16,7 @@ import (
 // Text は、人間向けの出力を書く。
 //
 //	internal/scan/cstyle.go:42:2  place-not-allowed  place=leading kind=line
-//	  // 以前はここで前方移行していた
+//	  // 前方移行はここで行っていた
 //	  この位置のコメントは許可されていません。
 func Text(w io.Writer, res *audit.Result) error {
 	if len(res.Findings) == 0 {
