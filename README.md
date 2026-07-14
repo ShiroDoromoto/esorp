@@ -68,6 +68,7 @@ gh attestation verify esorp_<version>_darwin_arm64.tar.gz --repo ShiroDoromoto/e
 esorp init                    # 設定ファイル（esorp.yaml）を生成する
 esorp check                   # ツリー全体を監査する
 esorp check --diff [<ref>]    # 変更分だけを監査する（既定の <ref> は origin/HEAD）
+esorp check --text -          # 標準入力の本文に層2（語彙）だけを当てる
 esorp explain <file>:<line>   # その行が、なぜ違反で、どう始末するのかを説明する
 esorp baseline update         # 今ある違反をスナップショットする（減る方向のみ）
 esorp lexicon --try <re>      # 層2 に足す前に、候補の語彙を自分のコーパスで測る
@@ -105,6 +106,47 @@ repos:
 
 見るのは HEAD から作業ツリーまでに増えた行に重なるコメントだけです。既にあった違反は素通しします
 （それは baseline の仕事）。コミットのたびにツリー全体を見たいなら `args: [check]` で上書きします。
+
+## コミットメッセージにも同じ語彙を当てる
+
+コメントから履歴・事情を追い出すと、同じものがコミットメッセージへ移ります。そこは公開リポジトリの
+恒久記録で、あとから直せません。フックに別の正規表現を書けば、禁止語彙が `esorp.yaml` とフックの
+二箇所に分裂し、必ずドリフトします — **禁止語彙の源泉は一つ**でなければなりません。
+
+`check --text -` は、標準入力に渡された文字列そのものを本文として読みます。
+
+```sh
+printf 'この関数はかつて同期だった。\n' | esorp check --text -
+```
+
+```
+1  no-history
+  この関数はかつて同期だった。
+  変化を語っています。今のコードが何であるかだけを書いてください。
+  「以前はこうだった」はバージョン管理が保持しています。
+
+1 件の違反
+当たったのは層2（語彙）だけです。層1（器・書式）は当たりません（渡された本文は器を持ちません）。
+baseline はありません（その場限りの入力なので、抑制のキーが立ちません）。
+```
+
+当たるのは層2（語彙）だけです。素のテキストは器を持たないので、**層1（器・書式）は当たりません**。
+baseline も効きません。終了コード（`0` / `1` / `2`）と `--format`（text | json）は、ツリーの監査と
+同じです。
+
+**esorp は git を知りません。** 流し込むのはフックの仕事です。`.git/hooks/commit-msg`:
+
+```sh
+#!/bin/sh
+esorp check --text - < "$1"
+```
+
+同じ口が PR 本文にもリリースノートにも挿さります（`gh pr view --json body -q .body | esorp check --text -`）。
+`check-commit-msg` のような専用の口を作らないのは、作った瞬間に特定のワークフローがツールへ焼き込まれる
+からです。
+
+`esorp init` が書き込む `no-history` は `where` を省いているので、**この口にもそのまま当たります**。
+面を絞ったルール（`where: syntax: [cstyle]`）を、この口にも当てたいなら、面に `text` を足します（次節）。
 
 ## GitHub Action
 
@@ -228,14 +270,20 @@ internal/store/index.go:3:1  place=doc kind=line
 
 句をテストデータや設定に書くぶんには当たりません。**文字列リテラルはコメントではない**からです。
 
-`where` を省くと、全ての `syntax` エントリ・全ての kind・全てのファイルに当たります。絞るなら:
+`where` を省くと、全ての `syntax` エントリ・全ての kind・全てのファイル、そして `check --text -` に
+渡された本文にも当たります（共有が既定で、例外だけを宣言します）。絞るなら:
 
 ```yaml
     where:
-      syntax: [cstyle-go]                        # 省略時は全エントリ
+      syntax: [cstyle-go, text]                  # 省略時は全エントリ。text は取り出しの要らない入力の面
       kind: [line, block]                        # 省略時は全 kind
       path: ["**/*.go", "!internal/legacy/**"]   # 省略時は全ファイル。「!」始まりは除外
 ```
+
+`text` は `where.syntax` の**予約値**で、`check --text -` に渡された本文の面を指します。`syntax:` の
+エントリとしては書けません（ファイルを持たない入力なので、拾う対象がありません）。この入力を絞れる軸は
+`syntax` だけです — `kind`（コメントの種別）も `path`（ファイル）も持たないので、**その軸で絞った
+ルールは、この面には当たりません**。
 
 ### 層3 — エージェントが答える
 
