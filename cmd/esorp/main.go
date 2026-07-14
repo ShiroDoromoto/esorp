@@ -41,6 +41,7 @@ const usage = `esorp — コメントの置き場所と書式を監査する
   esorp init --diff          現行テンプレートと手元の設定の差分を見せる（書き換えない）
   esorp check                設定に従いツリー全体を監査する
   esorp check --diff [<ref>] 変更分のみ監査する（既定の <ref> は origin/HEAD）
+  esorp check --text -       標準入力の本文に層2（語彙）だけを当てる（commit-msg フック向け）
   esorp explain <file>:<line>  その行のコメントが、なぜ違反で、どう始末するのかを説明する
   esorp baseline update      既存の違反をスナップショットする（減る方向のみ）
   esorp lexicon --try <re>   層2 に足す前に、候補の語彙を自分のコーパスで測る
@@ -62,6 +63,14 @@ check のフラグ:
   --diff            <ref> と HEAD の分岐点から作業ツリーまでに追加された行に重なる
                     コメントだけを監査する（pre-commit / PR 向け）。baseline も併せて効く。
                     <ref> は末尾に置く（他のフラグは <ref> より前に並べる）
+  --text -          ファイルからコメントを取り出すのではなく、標準入力に渡された文字列
+                    そのものを本文として読む。当たるのは層2（語彙）だけで、層1（器・書式）は
+                    当たらない——素のテキストは器を持たない。ルールを面で絞るなら
+                    where.syntax: [text]（where.syntax を省いたルールは、この面にも当たる）。
+                    baseline は効かない。--diff とは併せられない。git は知らないので、
+                    コミットメッセージを流し込むのはフックの仕事:
+
+                        esorp check --text - < "$1"    # .git/hooks/commit-msg
 
   設定に review: を書いてあると、--diff かつ --format json のときだけ、層1・層2 を通り抜けた
   コメントと、それらに投げる問いが review として出る（層3）。esorp は意味を判定せず、LLM も
@@ -116,7 +125,12 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
+// run は、標準入力を os.Stdin として捌く（check --text - が読む先）。
 func run(args []string, stdout, stderr io.Writer) int {
+	return runInput(args, os.Stdin, stdout, stderr)
+}
+
+func runInput(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage)
 		return exitConfig
@@ -126,7 +140,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "init":
 		return runInit(args[1:], stdout, stderr)
 	case "check":
-		return runCheck(args[1:], stdout, stderr)
+		return runCheck(args[1:], stdin, stdout, stderr)
 	case "explain":
 		return runExplain(args[1:], stdout, stderr)
 	case "baseline":
@@ -246,17 +260,22 @@ func runInitDiff(configPath, format string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
-func runCheck(args []string, stdout, stderr io.Writer) int {
+func runCheck(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "esorp.yaml", "設定ファイルの場所")
 	format := fs.String("format", "text", "出力の形式（text | json）")
 	diffMode := fs.Bool("diff", false, "変更行に重なるコメントだけを監査する")
+	text := fs.String("text", "", "取り出しの要らない入力を標準入力から読む（- のみ）")
 	if err := fs.Parse(args); err != nil {
 		return exitConfig
 	}
 	if !knownFormat("check", *format, stderr) {
 		return exitConfig
+	}
+
+	if *text != "" {
+		return runCheckBody(*text, *configPath, *format, *diffMode, fs.Args(), stdin, stdout, stderr)
 	}
 
 	ref := defaultRef
@@ -301,6 +320,54 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if len(a.result.Findings) > 0 {
+		return exitViolated
+	}
+	return exitOK
+}
+
+// runCheckBody は、標準入力から受けた本文に層2（語彙）だけを当てる。コメントから追い出した事情が
+// コミットメッセージへ移るのを、同じ esorp.yaml の語彙で止めるための口——禁止語彙をフックにも書けば、
+// 源泉が2つに割れてドリフトする。流し込むのは呼び手（フック）の仕事で、esorp は git を知らない。
+// 受けるのは「-」だけ。ファイルを丸ごと text として読む面は持たない（ファイルはコメントを取り出す
+// 道で読む）。--diff は変更行との突き合わせであり、渡された本文には比べる相手が無いので弾く。
+// baseline も効かない——揮発的な入力にパスも行も無く、抑制のキーが立たない。終了コードと --format は
+// ツリーの監査と同じで、フックにも CI にも同じ形で挿さる。
+func runCheckBody(text, configPath, format string, diffMode bool, rest []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	switch {
+	case text != "-":
+		fmt.Fprintf(stderr, "esorp check: --text は %q を受けません（標準入力から読む「-」だけです）\n", text)
+		return exitConfig
+	case diffMode:
+		fmt.Fprintln(stderr, "esorp check: --text と --diff は併せられません（渡された本文に、比べる相手はありません）")
+		return exitConfig
+	case len(rest) > 0:
+		fmt.Fprintf(stderr, "esorp check --text: 余分な引数 %q（本文は標準入力から読みます）\n", rest[0])
+		return exitConfig
+	}
+
+	body, err := io.ReadAll(stdin)
+	if err != nil {
+		fmt.Fprintf(stderr, "esorp: 標準入力を読めません: %v\n", err)
+		return exitConfig
+	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitConfig
+	}
+
+	vs := audit.Text(cfg, string(body))
+	write := report.BodyText
+	if format == "json" {
+		write = report.BodyJSON
+	}
+	if err := write(stdout, vs); err != nil {
+		fmt.Fprintf(stderr, "esorp: %v\n", err)
+		return exitConfig
+	}
+
+	if len(vs) > 0 {
 		return exitViolated
 	}
 	return exitOK
