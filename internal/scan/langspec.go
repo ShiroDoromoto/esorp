@@ -383,6 +383,16 @@ func PowerShellSpec() LangSpec {
 	return spec
 }
 
+// TextSpec は、取り出しの要らない入力の字句。渡された文字列そのものが本文であり、コメント記号も
+// 継ぎ行のマーカーも持たない。ソースから取り出す道には現れないので、langs（字句の登録簿）にも
+// 載せない——設定の lang: で名指しできる字句ではなく、ファイルを読む字句でもない。ここに要るのは、
+// 折り返しを畳む Unwrap / BodyLines が字句を要求するからで、剥がすものが何も無いことをこの spec が
+// 表す。字下げした行はコードの行として畳まない（CodeLines）——素のテキストでも、字下げは散文の
+// 折り返しではない。
+func TextSpec() LangSpec {
+	return LangSpec{Name: "text"}
+}
+
 // langs は字句の登録簿。字句を足すのはここ1箇所で、どのファミリに属し、どの拡張子・どのファイル名の
 // ファイルをその字句で読み、ファミリの既定になるかまでを1行で書く。SpecFor / SpecByName /
 // LangFamily / LangNames / FamilySpec はすべてこの表から引くので、拡張子から読めるのに lang: で

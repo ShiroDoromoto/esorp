@@ -31,6 +31,10 @@ const (
 
 	// Orphan はどこにも紐づかないもの。直後がコードでない（空行が挟まる / 閉じ括弧 / ファイル末尾）。
 	Orphan
+
+	// None は器を持たない本文（取り出しの要らない入力）。コードの中の位置ではないので、どの位置
+	// クラスにも当たらない。Parse は返さない（設定の allow に書ける値ではない）。
+	None
 )
 
 func (p Place) String() string {
@@ -45,6 +49,8 @@ func (p Place) String() string {
 		return "leading"
 	case Orphan:
 		return "orphan"
+	case None:
+		return "none"
 	default:
 		return "unknown"
 	}

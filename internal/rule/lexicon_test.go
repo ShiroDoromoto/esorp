@@ -103,7 +103,7 @@ func TestLexiconWhere(t *testing.T) {
 		{"ファミリで絞ったルールは text に当たらない", config.Where{Syntax: []string{"cstyle", "hash"}}, text, 0},
 		{"syntax: [text] はファイルの面に当たらない", config.Where{Syntax: []string{config.SyntaxText}}, doc, 0},
 		{"path を書いたルールは text に当たらない", config.Where{Path: []string{"**"}}, text, 0},
-		{"kind の絞りは text でも効く", config.Where{Kind: []string{"block"}}, text, 0},
+		{"kind を書いたルールは text に当たらない", config.Where{Kind: []string{"line"}}, text, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -33,6 +33,10 @@ const (
 
 	// KindShebang は1行目の「#!…」。コメントでもコードでもない、カーネルへの指示。
 	KindShebang
+
+	// KindNone は種別を持たない本文（取り出しの要らない入力）。コメント記号で開いたものではないので、
+	// 行かブロックかを名乗れない。字句が返すことはなく、設定にも書けない（ParseKind は返さない）。
+	KindNone
 )
 
 func (k Kind) String() string {
@@ -53,6 +57,8 @@ func (k Kind) String() string {
 		return "string"
 	case KindShebang:
 		return "shebang"
+	case KindNone:
+		return "none"
 	default:
 		return "unknown"
 	}
