@@ -14,18 +14,18 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # wharfy は git のタグから版を決める。浅いクローンではタグが来ない。
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
       # wharfy build は内部で goreleaser を呼ぶ。PATH に無いと builder_unavailable で落ちる。
       # メジャーを固定する。v3 が出たときに黙って壊れないように。
-      - uses: goreleaser/goreleaser-action@v6
+      - uses: goreleaser/goreleaser-action@v7
         with:
           install-only: true
           version: "~> v2"

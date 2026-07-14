@@ -91,7 +91,7 @@ repos:
 ## GitHub Action
 
 ```yaml
-- uses: actions/checkout@v4
+- uses: actions/checkout@v7
   with:
     fetch-depth: 0        # --diff は分岐点を取る。浅いクローンでは取れない
 - uses: ShiroDoromoto/esorp@v0
