@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -127,6 +128,29 @@ rules:
 	}
 }
 
+// TestLoadRuleWhereSyntaxText は、where.syntax の予約値 text が、syntax: に同名のエントリが
+// 無くても読めることを見る。取り出しの無い入力は拾う対象を持たないので、宣言できない。
+func TestLoadRuleWhereSyntaxText(t *testing.T) {
+	cfg, err := load(t, `
+syntax:
+  cstyle:
+    files: ["**/*.go"]
+    mode: content-only
+rules:
+  - id: no-history
+    pattern: "かつて"
+    message: "変化を語っています"
+    where:
+      syntax: [cstyle, text]
+`)
+	if err != nil {
+		t.Fatalf("読めない: %v", err)
+	}
+	if got := cfg.Rules[0].Where.Syntax; !slices.Contains(got, SyntaxText) {
+		t.Errorf("where.syntax = %v, want %q を含む", got, SyntaxText)
+	}
+}
+
 func TestLoadErrors(t *testing.T) {
 	tests := []struct {
 		name string
@@ -204,6 +228,11 @@ func TestLoadErrors(t *testing.T) {
 			name: "where.syntax が syntax に無い名前",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nrules:\n  - id: r\n    pattern: a\n    message: x\n    where:\n      syntax: [hash]\n",
 			want: "syntax: に無い名前",
+		},
+		{
+			name: "syntax に text エントリは書けない",
+			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\n  text:\n    files: [\"**/*.txt\"]\n    mode: content-only\n",
+			want: "予約値",
 		},
 		{
 			name: "rules の id が層1 の違反 id と衝突",

@@ -14,9 +14,10 @@ import (
 // どのエントリが拾ったか、where.path はどのファイルかであり、どちらも走査の側が知っている。
 type Target struct {
 	// Syntax は、そのファイルを拾った syntax エントリの名前（where.syntax が照らすもの）。
+	// 取り出しの無い入力（素の本文）は config.SyntaxText。
 	Syntax string
 
-	// Path はツリーの根からの相対パス。区切りは「/」。
+	// Path はツリーの根からの相対パス。区切りは「/」。取り出しの無い入力には無い（空）。
 	Path string
 }
 
@@ -56,7 +57,10 @@ func Lexicon(c place.Comment, rules []config.Rule, t Target, spec scan.LangSpec)
 	return out
 }
 
-// applies は、ルールの where: がこのコメントに届くかを見る。省略した軸は絞らない。
+// applies は、ルールの where: がこのコメントに届くかを見る。省略した軸は絞らない（where.syntax を
+// 省いたルールは、取り出しの無い入力にも当たる——共有が既定で、例外だけ宣言する）。
+// where.path を書いたルールは、取り出しの無い入力には当たらない。パスの無い本文に対してパスの
+// 絞りを黙って無視すると、設定に書いた絞りが効かないモードが生まれる。
 func applies(r config.Rule, c place.Comment, t Target) bool {
 	w := r.Where
 	if len(w.Syntax) > 0 && !slices.Contains(w.Syntax, t.Syntax) {
@@ -65,7 +69,7 @@ func applies(r config.Rule, c place.Comment, t Target) bool {
 	if len(w.Kind) > 0 && !slices.Contains(w.KindValues(), c.Kind) {
 		return false
 	}
-	if len(w.Path) > 0 && !glob.Selects(w.Path, t.Path) {
+	if len(w.Path) > 0 && (t.Syntax == config.SyntaxText || !glob.Selects(w.Path, t.Path)) {
 		return false
 	}
 	return true

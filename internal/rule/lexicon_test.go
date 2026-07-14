@@ -81,6 +81,8 @@ func TestLexiconWhere(t *testing.T) {
 	src := "package p\n\n// F はかつて同期だった。\nfunc F() {}\n"
 	doc := Target{Syntax: "cstyle", Path: "internal/a.go"}
 
+	text := Target{Syntax: config.SyntaxText}
+
 	tests := []struct {
 		name   string
 		where  config.Where
@@ -95,6 +97,13 @@ func TestLexiconWhere(t *testing.T) {
 		{"path に当たる", config.Where{Path: []string{"internal/**"}}, doc, 1},
 		{"path が違う", config.Where{Path: []string{"cmd/**"}}, doc, 0},
 		{"path の除外はいつも勝つ", config.Where{Path: []string{"**/*.go", "!internal/**"}}, doc, 0},
+
+		{"省略時は text にも当たる", config.Where{}, text, 1},
+		{"syntax: [text] は text に当たる", config.Where{Syntax: []string{config.SyntaxText}}, text, 1},
+		{"ファミリで絞ったルールは text に当たらない", config.Where{Syntax: []string{"cstyle", "hash"}}, text, 0},
+		{"syntax: [text] はファイルの面に当たらない", config.Where{Syntax: []string{config.SyntaxText}}, doc, 0},
+		{"path を書いたルールは text に当たらない", config.Where{Path: []string{"**"}}, text, 0},
+		{"kind の絞りは text でも効く", config.Where{Kind: []string{"block"}}, text, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

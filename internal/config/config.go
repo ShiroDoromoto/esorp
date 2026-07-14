@@ -25,6 +25,11 @@ import (
 // （書けてしまうと、黙って何も検査しない）。
 var knownFamilies = []string{"cstyle", "hash", "sgml", "cssblock"}
 
+// SyntaxText は、取り出しの無い入力（ファイルから拾ったのではない素の本文）を指す where.syntax の
+// 予約値。面を絞る軸は where.syntax のままで、text はその一員。syntax: セクションには書けない
+// ——files を持たない入力なので、拾う対象が無い。
+const SyntaxText = "text"
+
 // knownViolations は、層1 が出す違反 id。disposition のキーはこれでなければならない。
 var knownViolations = []string{
 	"place-not-allowed", "label-required",
@@ -199,6 +204,10 @@ func (c *Config) validate() []string {
 		add("review.question: 必須です。問いが無いなら、review: ごと消してください（層3 は開きません）")
 	}
 	for _, name := range slices.Sorted(maps.Keys(c.Syntax)) {
+		if name == SyntaxText {
+			add("syntax.%s: %q は取り出しの無い入力を指す予約値です。files を持たない入力なので、拾うエントリは書けません（ルールを絞るなら where.syntax: [%s]）", name, SyntaxText, SyntaxText)
+			continue
+		}
 		validateSyntax(name, c.FamilyOf(name), c.Syntax[name], add)
 	}
 
@@ -226,8 +235,11 @@ func (c *Config) validate() []string {
 			c.Rules[i].Regexp = re
 		}
 		for _, s := range r.Where.Syntax {
+			if s == SyntaxText {
+				continue
+			}
 			if _, ok := c.Syntax[s]; !ok {
-				add("%s.where.syntax: %q は syntax: に無い名前です", at, s)
+				add("%s.where.syntax: %q は syntax: に無い名前です（%q は取り出しの無い入力を指す予約値）", at, s, SyntaxText)
 			}
 		}
 		for _, k := range r.Where.Kind {
