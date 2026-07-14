@@ -44,6 +44,24 @@ go install github.com/ShiroDoromoto/esorp/cmd/esorp@latest
 Debian / RPM 系のパッケージは [Gemfury](https://fury.io) から出ています
 （`https://apt.fury.io/shirodoromoto/` / `https://yum.fury.io/shirodoromoto/`）。
 
+## 来歴を確かめる
+
+リリースの資産（アーカイブ、`install.sh`、deb / rpm）には、GitHub の
+[artifact attestation](https://docs.github.com/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds)
+が付いています。「このリポジトリの、このコミットから、この CI で焼かれた」ことを、受け取った側で確かめられます。
+
+```sh
+gh attestation verify esorp_<version>_darwin_arm64.tar.gz --repo ShiroDoromoto/esorp
+```
+
+確かめられる範囲は、入れ方で変わります。隠さずに書きます。
+
+| 入れ方 | 来歴 |
+| --- | --- |
+| install.sh / アーカイブ / deb / rpm | 落としたファイルに `gh attestation verify` が当たる |
+| Homebrew / Scoop | 資産そのものはリリースのものと同じバイト列だが、`brew` / `scoop` は来歴を見ない |
+| `go install` | 手元でソースからビルドするので、来歴の対象外 |
+
 ## 使う
 
 ```sh
