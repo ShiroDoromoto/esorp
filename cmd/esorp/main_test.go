@@ -1207,6 +1207,13 @@ func TestLexiconTryJSON(t *testing.T) {
 			Comments int `json:"comments"`
 			Hits     int `json:"hits"`
 		} `json:"summary"`
+		Surfaces []struct {
+			Syntax string `json:"syntax"`
+			Hits   int    `json:"hits"`
+		} `json:"surfaces"`
+		TextSurface struct {
+			Measured bool `json:"measured"`
+		} `json:"text_surface"`
 		Hits []struct {
 			Path string `json:"path"`
 			Line int    `json:"line"`
@@ -1216,8 +1223,14 @@ func TestLexiconTryJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout.String()), &got); err != nil {
 		t.Fatalf("JSON が読めない: %v\n%s", err, stdout.String())
 	}
-	if got.Version != 1 || got.Pattern != "以前は" || got.Summary.Hits != 1 || got.Summary.Comments != 1 {
+	if got.Version != 2 || got.Pattern != "以前は" || got.Summary.Hits != 1 || got.Summary.Comments != 1 {
 		t.Fatalf("summary が違う: %+v", got)
+	}
+	if len(got.Surfaces) != 1 || got.Surfaces[0].Syntax != "cstyle" || got.Surfaces[0].Hits != 1 {
+		t.Errorf("面ごとの内訳が違う: %+v", got.Surfaces)
+	}
+	if got.TextSurface.Measured {
+		t.Error("text 面には当てるコーパスが無いのに、測ったと言っている")
 	}
 	if len(got.Hits) != 1 || got.Hits[0].Path != "a.go" || got.Hits[0].Line != 3 {
 		t.Fatalf("hits が違う: %+v", got.Hits)

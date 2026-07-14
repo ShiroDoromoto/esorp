@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -14,7 +15,11 @@ import (
 // Text は原文。原文だけでは、句が行をまたいで当たったときに、なぜ当たったのかが読み取れない。
 // SeamDependent は、その当たりが折り返しの継ぎ目に左右されること（層2 が出す印と同じもの）。
 type Hit struct {
-	Path          string
+	Path string
+
+	// Syntax は、そのファイルを拾った syntax エントリの名前（where.syntax が照らすもの）。
+	Syntax string
+
 	Body          string
 	SeamDependent bool
 	place.Comment
@@ -28,6 +33,19 @@ type Trial struct {
 	Comments int
 	Hits     []Hit
 	Skipped  []string
+
+	// Surfaces は、面（syntax エントリ）ごとの内訳。ある面のコーパスで誤検知ゼロだったパターンが、
+	// 別の面では当たりまくる——それは普通に起きる（Go の doc と YAML のコメントでは、書かれる語彙が
+	// そもそも違う）。全体の件数だけを見せると、その偏りが平均に埋もれる。
+	Surfaces []Surface
+}
+
+// Surface は、面1つの内訳。名前順に並ぶ。
+type Surface struct {
+	Syntax   string
+	Files    int
+	Comments int
+	Hits     int
 }
 
 // Try は、候補パターンをツリーの全コメントに当てる。層2 の語彙を足す前に、それが自分のコーパスで
@@ -39,7 +57,8 @@ type Trial struct {
 // それは違反を報告するときの順序であって、語彙の精度とは関係がない——導入前のツリーは層1 の違反を
 // 大量に含んでいて、そこで母集団を絞ると、測りたいコーパスのほとんどが視界から消える。
 func Try(cfg *config.Config, root string, re *regexp.Regexp) (*Trial, error) {
-	t := &Trial{Pattern: re.String(), Hits: []Hit{}}
+	t := &Trial{Pattern: re.String(), Hits: []Hit{}, Surfaces: []Surface{}}
+	surfaces := map[string]*Surface{}
 
 	paths, err := collect(cfg, root, nil)
 	if err != nil {
@@ -55,8 +74,16 @@ func Try(cfg *config.Config, root string, re *regexp.Regexp) (*Trial, error) {
 			continue
 		}
 
+		s, seen := surfaces[m.syntax]
+		if !seen {
+			s = &Surface{Syntax: m.syntax}
+			surfaces[m.syntax] = s
+		}
 		t.Files++
 		t.Comments += len(comments)
+		s.Files++
+		s.Comments += len(comments)
+
 		for _, c := range comments {
 			folded := scan.Unwrap(scan.BodyLines(c.Text, spec), spec)
 			readings := folded.Readings()
@@ -69,13 +96,19 @@ func Try(cfg *config.Config, root string, re *regexp.Regexp) (*Trial, error) {
 			if hits == 0 {
 				continue
 			}
+			s.Hits++
 			t.Hits = append(t.Hits, Hit{
 				Path:          m.path,
+				Syntax:        m.syntax,
 				Body:          folded.Text,
 				SeamDependent: hits < len(readings),
 				Comment:       c,
 			})
 		}
+	}
+
+	for _, name := range slices.Sorted(maps.Keys(surfaces)) {
+		t.Surfaces = append(t.Surfaces, *surfaces[name])
 	}
 
 	slices.SortFunc(t.Hits, func(a, b Hit) int {
