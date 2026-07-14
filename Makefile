@@ -2,9 +2,9 @@
 # ゲートの中身はこの1ファイルにだけ置き、.github/workflows/ci.yml はここを呼ぶ（同じ検査を
 # 2か所に書けば、いつか食い違う）。
 #
-# actionlint は版を名指しして go run で呼ぶ。入れる手順が増えず、手元と CI で同じ版が走る。
+# actionlint は go.mod の tool 依存として呼ぶ（go tool）。入れる手順が増えず、手元と CI で
+# 同じ版が走る。版はここではなく go.mod にあるので、dependabot が上げどきを知らせてくれる。
 # run: の中身は、shellcheck が PATH にあればそこまで見る。
-ACTIONLINT := github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 
 .PHONY: check fmt vet test dogfood actions
 
@@ -31,4 +31,4 @@ dogfood:
 # ワークフローと action.yml の壊れは、目で見ても出てこない（action の metadata は走らせても
 # 黙って通る）。
 actions:
-	go run $(ACTIONLINT) -color
+	go tool actionlint -color

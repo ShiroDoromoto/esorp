@@ -15,3 +15,14 @@ updates:
       actions:
         patterns:
           - "*"
+
+  # ゲートが呼ぶ actionlint も、go.mod の tool 依存として乗っている（Makefile 参照）。
+  # ここを見ているから、その版も向こうから上がってくる。
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      go:
+        patterns:
+          - "*"
