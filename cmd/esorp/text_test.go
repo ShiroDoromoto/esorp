@@ -77,11 +77,18 @@ func TestCheckTextJSON(t *testing.T) {
 	}
 
 	var got struct {
-		Version int `json:"version"`
-		Summary struct {
+		Version int    `json:"version"`
+		Surface string `json:"surface"`
+		Layers  struct {
+			Applied    []string `json:"applied"`
+			NotApplied []string `json:"not_applied"`
+		} `json:"layers"`
+		Baseline bool `json:"baseline"`
+		Summary  struct {
 			Violations int `json:"violations"`
 		} `json:"summary"`
 		Violations []struct {
+			Line    int    `json:"line"`
 			ID      string `json:"id"`
 			Text    string `json:"text"`
 			Message string `json:"message"`
@@ -93,11 +100,31 @@ func TestCheckTextJSON(t *testing.T) {
 	if got.Summary.Violations != 1 || len(got.Violations) != 1 {
 		t.Fatalf("違反 = %d 件, want 1\n%s", len(got.Violations), out)
 	}
-	if got.Violations[0].ID != "no-history" {
-		t.Errorf("id = %q, want no-history", got.Violations[0].ID)
+	if got.Violations[0].ID != "no-history" || got.Violations[0].Line != 1 {
+		t.Errorf("違反 = %q（行 %d）, want no-history（行 1）", got.Violations[0].ID, got.Violations[0].Line)
 	}
-	if strings.Contains(out, `"path"`) || strings.Contains(out, `"line"`) {
-		t.Errorf("パスも行も持たない入力なのに、欄がある:\n%s", out)
+	if strings.Contains(out, `"path"`) {
+		t.Errorf("パスを持たない入力なのに、欄がある:\n%s", out)
+	}
+	if got.Surface != "text" || got.Baseline {
+		t.Errorf("surface = %q / baseline = %v, want text / false", got.Surface, got.Baseline)
+	}
+	if len(got.Layers.NotApplied) != 2 {
+		t.Errorf("当たらない層を告げていない: %v", got.Layers)
+	}
+}
+
+// TestCheckTextSaysWhatDoesNotApply は、適合したときも、当たらない層を告げることを見る。黙って通すと、
+// 通ったことが「層1 も通った」「baseline で抑えられる」と読まれる。
+func TestCheckTextSaysWhatDoesNotApply(t *testing.T) {
+	code, out := checkText(t, tree(t, textConfig, ""), "認証のトークンを検証する")
+	if code != exitOK {
+		t.Fatalf("code = %d, want %d", code, exitOK)
+	}
+	for _, want := range []string{"層1（器・書式）は当たりません", "baseline はありません"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("出力に %q が現れない:\n%s", want, out)
+		}
 	}
 }
 

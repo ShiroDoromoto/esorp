@@ -38,14 +38,31 @@ func TestText(t *testing.T) {
 	if v.ID != "no-history" || v.Message != "変化を語っています。" {
 		t.Errorf("違反 = %q / %q", v.ID, v.Message)
 	}
-	if v.Line != 0 || v.Col != 0 {
-		t.Errorf("パスも行も持たない入力なのに位置がある: %d:%d", v.Line, v.Col)
+	if v.Line != 3 {
+		t.Errorf("違反の行 = %d, want 3（当たった段落の先頭）", v.Line)
 	}
 	if v.Place != place.None || v.Kind != scan.KindNone {
 		t.Errorf("器も種別も持たない入力なのに名乗っている: place=%s kind=%s", v.Place, v.Kind)
 	}
 	if v.Site.Path != "rules[0]" {
 		t.Errorf("site = %q, want rules[0]", v.Site.Path)
+	}
+}
+
+// TestTextLines は、違反が入力の中の行を持つことを見る。段落ごとに当てるので、どの段落を直せば
+// よいのかが書き手に返る。
+func TestTextLines(t *testing.T) {
+	cfg := textConfig(t, config.Where{})
+
+	got := Text(cfg, "認証を直す\n\nこの関数はかつて同期だった。\n\n待ち方も変えた。\n\nno longer 使わない。\n")
+	if len(got) != 2 {
+		t.Fatalf("違反 = %d 件, want 2\n%#v", len(got), got)
+	}
+	if got[0].Line != 3 || got[1].Line != 7 {
+		t.Errorf("行 = %d, %d, want 3, 7", got[0].Line, got[1].Line)
+	}
+	if got[0].Text != "この関数はかつて同期だった。" {
+		t.Errorf("当たった段落 = %q", got[0].Text)
 	}
 }
 
