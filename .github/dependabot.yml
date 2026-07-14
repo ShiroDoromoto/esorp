@@ -1,0 +1,17 @@
+# ワークフローが使う action の版を、誰も古いと言わない状態にしない。
+# 古びた action は黙って壊れるのではなく、ランナーが新しい Node へ強制で回し、
+# サポートが切れた日に警告が失敗へ変わる。上げどきは向こうから知らせてもらう。
+#
+# 引き金は人間が引く（配布と同じ）。dependabot が出すのは PR までで、
+# ci.yml がそれに当たる。緑を見てからマージする。
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # 4つの action を別々の PR で受け取っても、見るものは同じ。1本にまとめる。
+    groups:
+      actions:
+        patterns:
+          - "*"
