@@ -91,7 +91,9 @@ rules:
       変化を語っています。今のコードが何であるかだけを書いてください。
       「以前はこうだった」はバージョン管理が保持しています。
     where:
-      syntax: [cstyle, hash, sgml]
+      # text は check --text - に渡された本文の面。コメントから追い出した履歴が、コミットメッセージ
+      # へ移るのを止める（.githooks/commit-msg が流し込む）。
+      syntax: [cstyle, hash, sgml, text]
 
 # 層3（意味）。esorp は判定しない。層1・層2 を通り抜けたコメントを、変更分（check --diff）に絞って
 # JSON で渡し、この問いを添えるだけ。答えるのは esorp を走らせているエージェント自身。CI の赤/緑は

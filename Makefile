@@ -6,9 +6,15 @@
 # 同じ版が走る。版はここではなく go.mod にあるので、dependabot が上げどきを知らせてくれる。
 # run: の中身は、shellcheck が PATH にあればそこまで見る。
 
-.PHONY: check fmt vet test dogfood actions
+.PHONY: check fmt vet test dogfood actions hooks
 
 check: fmt vet test dogfood actions
+
+# コミットメッセージにも層2（語彙）を当てる。コメントから追い出した履歴は、放っておくとここへ移る。
+# 手元の git に一度だけ教える（core.hooksPath はリポジトリに焼けないので、各自が叩く）。
+hooks:
+	git config core.hooksPath .githooks
+	@echo "commit-msg フックを有効にしました（esorp check --text -）"
 
 fmt:
 	@out=$$(gofmt -l .); \
