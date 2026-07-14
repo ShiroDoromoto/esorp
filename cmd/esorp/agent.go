@@ -165,9 +165,9 @@ func agentMap() agentDoc {
 				When:    "導入初日に一度。既にあるコメントを読ませる口で、日常は check --diff の review で足りる。ツリー全体が多すぎるなら <path> で絞る",
 			},
 			{
-				Command: "esorp check --text - --format json",
-				What:    "標準入力に渡された文字列そのものを本文として読み、層2（語彙）だけを当てる。層1（器・書式）は当たらず、baseline も無い（出力の layers / baseline がそう告げる）",
-				When:    "コメントから追い出した事情の逃げ場——コミットメッセージ・PR 本文・リリースノート——に、同じ語彙を当てるとき。esorp は git を知らないので、流し込むのは呼び手（commit-msg フック）の仕事",
+				Command: "esorp check --text <src> --format json",
+				What:    "渡された文字列そのものを本文として読み、層2（語彙）だけを当てる（<src> は「-」で標準入力、それ以外はファイルのパス）。層1（器・書式）は当たらず、baseline も無い（出力の layers / baseline がそう告げる）",
+				When:    "コメントから追い出した事情の逃げ場——コミットメッセージ・PR 本文・リリースノート——に、同じ語彙を当てるとき。esorp は git を知らないので、本文を渡すのは呼び手（commit-msg フック）の仕事",
 			},
 			{
 				Command: "esorp lexicon --try <正規表現> --format json",
@@ -194,7 +194,7 @@ func agentMap() agentDoc {
 				"コメント」になって自己矛盾するし、違反を消す代わりに抑制を足す抜け道になる。\n" +
 				"例外は baseline に載せる（＝一覧として見える状態にする）。",
 			"esorp はコメントを書き換えない。監査に徹する。直すのはあなた。",
-			"禁止語彙の源泉は esorp.yaml ひとつ。コミットメッセージにも同じ語彙を当てる口（check --text -）が\n" +
+			"禁止語彙の源泉は esorp.yaml ひとつ。コミットメッセージにも同じ語彙を当てる口（check --text）が\n" +
 				"あるので、フックに別の正規表現を書かない——分裂した denylist は必ずドリフトする。",
 		},
 	}

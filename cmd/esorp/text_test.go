@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -140,6 +142,29 @@ func TestCheckTextJSONEmpty(t *testing.T) {
 	}
 }
 
+// TestCheckTextFile は、--text にパスを渡した本文が、標準入力に流したのと同じに当たることを見る。
+// pre-commit の commit-msg フックは、メッセージファイルのパスを引数で足す（シェルを介さないので、
+// リダイレクトを書く場所が無い）。ファイルはコメントを取り出す道を通らず、中身がまるごと本文になる
+// ——Go のファイルを渡しても、当たるのは層2 だけ。
+func TestCheckTextFile(t *testing.T) {
+	cfgPath := tree(t, textConfig, "")
+	msgPath := filepath.Join(t.TempDir(), "COMMIT_EDITMSG")
+	if err := os.WriteFile(msgPath, []byte("認証を直す\n\nこの関数はかつて同期だった。\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout strings.Builder
+	code := runInput([]string{"check", "--config", cfgPath, "--text", msgPath}, strings.NewReader(""), &stdout, io.Discard)
+	if code != exitViolated {
+		t.Fatalf("code = %d, want %d\n%s", code, exitViolated, stdout.String())
+	}
+	for _, want := range []string{"no-history", "かつて同期だった"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("報告に %q が現れない:\n%s", want, stdout.String())
+		}
+	}
+}
+
 // TestCheckTextRejects は、使い方の誤りを黙って受けないことを見る。
 func TestCheckTextRejects(t *testing.T) {
 	cfgPath := tree(t, textConfig, "")
@@ -148,7 +173,7 @@ func TestCheckTextRejects(t *testing.T) {
 		name string
 		args []string
 	}{
-		{"--text はファイルを受けない", []string{"check", "--config", cfgPath, "--text", "msg.txt"}},
+		{"読めないファイルは黙って通さない", []string{"check", "--config", cfgPath, "--text", filepath.Join(t.TempDir(), "no-such-msg.txt")}},
 		{"--diff とは併せられない", []string{"check", "--config", cfgPath, "--text", "-", "--diff"}},
 		{"余分な引数は受けない", []string{"check", "--config", cfgPath, "--text", "-", "HEAD"}},
 	}

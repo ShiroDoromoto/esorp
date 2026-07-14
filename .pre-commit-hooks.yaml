@@ -6,6 +6,8 @@
 #       rev: ""            # pre-commit autoupdate が最新のタグで埋める
 #       hooks:
 #         - id: esorp
+#         - id: esorp-commit-msg
+#           stages: [commit-msg]
 #
 # 見るのは HEAD から作業ツリーまでに増えた行に重なるコメントだけ。既にあった違反は素通しする
 # （それは baseline の仕事）。コミットのたびにツリー全体を見たいなら args: [check] で上書きする。
@@ -16,4 +18,17 @@
   args: [check, --diff, HEAD]
   language: golang
   pass_filenames: false
+  require_serial: true
+
+# コメントから追い出した事情は、コミットメッセージへ移る。そこは公開リポジトリの恒久記録で、あとから
+# 直せない。同じ esorp.yaml の語彙（層2）をメッセージにも当てる——フックに別の正規表現を書けば、禁止
+# 語彙の源泉が2つに割れてドリフトする。pre-commit はメッセージファイルのパスを引数で足すので、
+# 走るのは esorp check --text <メッセージファイル>。使う側は stages: [commit-msg] を添える
+# （既定のステージは pre-commit で、そこにメッセージファイルは無い）。
+- id: esorp-commit-msg
+  name: esorp (commit-msg)
+  description: コミットメッセージの本文に層2（語彙）を当てる
+  entry: esorp check --text
+  language: golang
+  stages: [commit-msg]
   require_serial: true
