@@ -21,6 +21,9 @@ func Explain(w io.Writer, cfg *config.Config, configPath string, res *audit.Resu
 		fmt.Fprintf(&b, "%s:%d:%d  %s  place=%s kind=%s\n", f.Path, f.Line, f.Col, f.ID, f.Place, f.Kind)
 		indent(&b, f.Text)
 		indent(&b, f.Message)
+		if f.SeamDependent {
+			indent(&b, SeamNote)
+		}
 		if base.Has(f.Key) {
 			indent(&b, "この違反は baseline が抑えています（check には出ません）。")
 		}
