@@ -97,6 +97,13 @@ type LangSpec struct {
 	BlockOpen   string
 	BlockClose  string
 
+	// LineComments / Blocks は、記号を複数持てる一般形。単一の LineComment / BlockOpen+BlockClose
+	// では表せない字句——設定の comments: が宣言する記法（行コメントが「;」と「#」の2つ、など）——を
+	// 受ける。組み込みの字句は単一の記号で足りるので単一フィールドに書き、設定が宣言した字句だけが
+	// ここを埋める。読む側（lexer / body）は lineMarkers / blockPairs で両者を同じ並びとして見る。
+	LineComments []string
+	Blocks       [][2]string
+
 	// BlockNests は、ブロックコメントがネストするか（Rust / Swift はネストする）。
 	BlockNests bool
 
@@ -165,6 +172,43 @@ type LangSpec struct {
 	// ExprKeywords は、その直後から式が始まりうるキーワード（return / await …）。「/」が除算か
 	// 正規表現か、「<」が比較・ジェネリクスか JSX かは、直前のトークンでしか当たりを付けられない。
 	ExprKeywords []string
+}
+
+// lineMarkers は、行コメントを開きうる記号の並び。複数を持つ字句（設定の comments.line）は
+// LineComments に、単一の字句は LineComment に入れるが、読む側はこの並びだけを見る。
+func (s LangSpec) lineMarkers() []string {
+	if len(s.LineComments) > 0 {
+		return s.LineComments
+	}
+	if s.LineComment != "" {
+		return []string{s.LineComment}
+	}
+	return nil
+}
+
+// blockPairs は、ブロックコメントの開き/閉じの対の並び。複数対を持つ字句（設定の comments.block）は
+// Blocks に、単一の字句は BlockOpen/BlockClose に入れるが、読む側はこの並びだけを見る。
+func (s LangSpec) blockPairs() [][2]string {
+	if len(s.Blocks) > 0 {
+		return s.Blocks
+	}
+	if s.BlockOpen != "" {
+		return [][2]string{{s.BlockOpen, s.BlockClose}}
+	}
+	return nil
+}
+
+// DeclaredSpec は、設定の comments: が宣言した記法から字句を組み立てる。宣言できるのは行コメントと
+// ブロックコメントの記号だけ（mode: content-only 限定）で、器の概念は持たない——層1 を飛ばして語彙
+// だけを当てるための、プリセットで読めない拡張子への逃げ道。行コメントは行頭か空白の直後だけで開く
+// （LineCommentSpaced）——語の中に現れた記号を本文ごと飲み込まない、安全側の既定。
+func DeclaredSpec(name string, line []string, block [][2]string) LangSpec {
+	return LangSpec{
+		Name:              name,
+		LineComments:      line,
+		Blocks:            block,
+		LineCommentSpaced: true,
+	}
 }
 
 // GoSpec は Go の字句。Go には doc 専用記法が無く、doc コメントとは「宣言の直前に置かれた //」の

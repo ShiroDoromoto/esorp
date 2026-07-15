@@ -128,6 +128,34 @@ rules:
 	}
 }
 
+// TestLoadDeclaredComments は、コメント記法を宣言したエントリが読めることを見る。宣言があれば
+// キーはファミリ名でなくてよく（nsis）、family: も lang: も要らない——読み方は comments: が決める。
+// 複数の行コメント記号と、ブロックの対を受ける。
+func TestLoadDeclaredComments(t *testing.T) {
+	cfg, err := load(t, `
+syntax:
+  nsis:
+    files: ["**/*.nsh"]
+    mode: content-only
+    comments:
+      line: [";", "#"]
+      block: [["/*", "*/"]]
+`)
+	if err != nil {
+		t.Fatalf("読めない: %v", err)
+	}
+	c := cfg.Syntax["nsis"].Comments
+	if !c.Declared() {
+		t.Fatal("Declared() が false")
+	}
+	if !slices.Equal(c.Line, []string{";", "#"}) {
+		t.Errorf("line = %v", c.Line)
+	}
+	if pairs := c.BlockPairs(); len(pairs) != 1 || pairs[0] != [2]string{"/*", "*/"} {
+		t.Errorf("BlockPairs = %v", pairs)
+	}
+}
+
 // TestLoadRuleWhereSyntaxText は、where.syntax の予約値 text が、syntax: に同名のエントリが
 // 無くても読めることを見る。取り出しの無い入力は拾う対象を持たないので、宣言できない。
 func TestLoadRuleWhereSyntaxText(t *testing.T) {
@@ -263,6 +291,36 @@ func TestLoadErrors(t *testing.T) {
 			name: "段落数の上限が 0",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\n    allow:\n      - place: doc\n        form:\n          paragraphs: 0\n",
 			want: "段落数の上限",
+		},
+		{
+			name: "comments は structural には書けない",
+			body: "syntax:\n  nsis:\n    files: [\"**/*.nsh\"]\n    mode: structural\n    comments:\n      line: [\";\"]\n",
+			want: "content-only のときだけ",
+		},
+		{
+			name: "comments と lang は併記できない",
+			body: "syntax:\n  nsis:\n    lang: shell\n    files: [\"**/*.nsh\"]\n    mode: content-only\n    comments:\n      line: [\";\"]\n",
+			want: "lang: とは併記できません",
+		},
+		{
+			name: "comments と family は併記できない",
+			body: "syntax:\n  nsis:\n    family: hash\n    files: [\"**/*.nsh\"]\n    mode: content-only\n    comments:\n      line: [\";\"]\n",
+			want: "family: とは併記できません",
+		},
+		{
+			name: "block の対は開きと閉じの2つ",
+			body: "syntax:\n  nsis:\n    files: [\"**/*.nsh\"]\n    mode: content-only\n    comments:\n      block: [[\"/*\"]]\n",
+			want: "開きと閉じの2つ",
+		},
+		{
+			name: "block の開き・閉じは空にできない",
+			body: "syntax:\n  nsis:\n    files: [\"**/*.nsh\"]\n    mode: content-only\n    comments:\n      block: [[\"/*\", \"\"]]\n",
+			want: "空にはできません",
+		},
+		{
+			name: "line の記号は空にできない",
+			body: "syntax:\n  nsis:\n    files: [\"**/*.nsh\"]\n    mode: content-only\n    comments:\n      line: [\"\"]\n",
+			want: "空の記号は書けません",
 		},
 	}
 

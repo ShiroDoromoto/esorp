@@ -80,6 +80,39 @@ type Syntax struct {
 
 	// Allow は許可する器の列挙。mode: structural のときだけ書ける。
 	Allow []Allow `yaml:"allow"`
+
+	// Comments は、このエントリのファイルを読むコメント記法の宣言（mode: content-only 限定）。
+	// プリセットの字句（cstyle / hash / sgml / cssblock）で読めない拡張子に網を張るための逃げ道で、
+	// 宣言があれば名前・拡張子・ファミリからの字句解決より優先する（設定が唯一の真実）。
+	// lang: / family: とは併記できない——どちらも読み方の宣言で、食い違う。
+	Comments Comments `yaml:"comments"`
+}
+
+// Comments は、エントリが宣言するコメント記法。層1（器）の宣言の解析は要らない content-only に
+// 限るので、行コメントとブロックコメントの記号だけを持つ。
+type Comments struct {
+	// Line は行コメントを開く記号の並び（";" "#" など）。
+	Line []string `yaml:"line"`
+
+	// Block はブロックコメントの開き/閉じの対の並び（[["/*", "*/"]]）。
+	Block [][]string `yaml:"block"`
+}
+
+// Declared は、コメント記法が宣言されているか（行かブロックのどちらかが書かれている）。
+func (c Comments) Declared() bool {
+	return len(c.Line) > 0 || len(c.Block) > 0
+}
+
+// BlockPairs は、宣言されたブロックの対を [開き, 閉じ] の並びにする（検証を通った設定を前提に、
+// 2つ揃った対だけを返す）。
+func (c Comments) BlockPairs() [][2]string {
+	pairs := make([][2]string, 0, len(c.Block))
+	for _, b := range c.Block {
+		if len(b) == 2 {
+			pairs = append(pairs, [2]string{b[0], b[1]})
+		}
+	}
+	return pairs
 }
 
 // Allow は許可する器1つ。ここに列挙されなかった器のコメントは、中身が何であれ違反。
@@ -263,10 +296,14 @@ func (c *Config) validate() []string {
 func validateSyntax(name, family string, s Syntax, add func(string, ...any)) {
 	at := "syntax." + name
 
-	if !slices.Contains(knownFamilies, family) {
-		add("%s.family: %q を読むスキャナがありません（今あるのは %s）", at, family, strings.Join(knownFamilies, " / "))
+	if s.Comments.Declared() {
+		validateComments(at, s, add)
+	} else {
+		if !slices.Contains(knownFamilies, family) {
+			add("%s.family: %q を読むスキャナがありません（今あるのは %s）", at, family, strings.Join(knownFamilies, " / "))
+		}
+		validateLang(at, family, s.Lang, add)
 	}
-	validateLang(at, family, s.Lang, add)
 	validateFiles(at, s.Files, add)
 
 	switch s.Mode {
@@ -299,6 +336,35 @@ func validateLang(at, family, lang string, add func(string, ...any)) {
 	}
 	if f != family {
 		add("%s.lang: %q は %s ファミリの字句です（family: %s と食い違います）", at, lang, f, family)
+	}
+}
+
+// validateComments は、宣言したコメント記法を検める。宣言できるのは mode: content-only のときだけ
+// （structural は器の判定に宣言の解析が要る）、lang: / family: とは併記できない（どちらも読み方の
+// 宣言で、食い違う）。ブロックの対は開きと閉じの2つで、どちらも空にはできない。
+func validateComments(at string, s Syntax, add func(string, ...any)) {
+	if s.Mode != "" && s.Mode != "content-only" {
+		add("%s.comments: mode: content-only のときだけ宣言できます（structural は器の判定に宣言の解析が要ります）", at)
+	}
+	if s.Lang != "" {
+		add("%s.comments: lang: とは併記できません（どちらも読み方の宣言で、食い違います）", at)
+	}
+	if s.Family != "" {
+		add("%s.comments: family: とは併記できません（comments: が読み方を決めるので、family は効きません）", at)
+	}
+	for i, l := range s.Comments.Line {
+		if l == "" {
+			add("%s.comments.line[%d]: 空の記号は書けません", at, i)
+		}
+	}
+	for i, b := range s.Comments.Block {
+		if len(b) != 2 {
+			add(`%s.comments.block[%d]: 開きと閉じの2つで書きます（["/*", "*/"]）`, at, i)
+			continue
+		}
+		if b[0] == "" || b[1] == "" {
+			add("%s.comments.block[%d]: 開きも閉じも空にはできません", at, i)
+		}
 	}
 }
 

@@ -219,6 +219,23 @@ syntax:
 書ける名前は go / rust / typescript / tsx / javascript / jsx / css / sgml / shell / yaml / toml /
 make / dockerfile / gitignore / powershell。ファミリと食い違う `lang:` は設定エラーです。
 
+プリセットの字句で読めない拡張子（新しい言語のインストーラや小道具）は、コメント記法を宣言できます。
+`mode: content-only` 限定で、行コメントとブロックコメントの記号だけを書きます。宣言があれば、
+未登録の拡張子でも読みます（ツールの更新を待たずに網を張れる）。
+
+```yaml
+syntax:
+  nsis:
+    files: ["**/*.nsh"]
+    mode: content-only
+    comments:
+      line: [";", "#"]        # 行コメントの記号（複数書ける）
+      block: [["/*", "*/"]]   # ブロックコメントの開き・閉じの対（複数書ける）
+```
+
+`comments:` は読み方を丸ごと決めるので、`lang:` や `family:` とは併記できません（食い違うため設定
+エラー）。器の宣言の解析が要る `mode: structural` にも書けません。
+
 ### 層2 — 語彙
 
 **ツールのコードは語彙を持ちません。** 語彙があるのは、あなたの `esorp.yaml` の中だけです。

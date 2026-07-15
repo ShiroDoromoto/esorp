@@ -193,6 +193,27 @@ func TestRunUnknownExtSkipped(t *testing.T) {
 	}
 }
 
+// TestRunDeclaredComments は、コメント記法を宣言すれば（comments:）、登録スキャナの無い拡張子でも
+// 読めることを確かめる（Skipped にした .nsh の逃げ道）。宣言した2つの行コメント記号のうち、行頭の
+// 「;」で始まる行はまるごとコメントとして取り出され、語彙まで届く——既定の「#」で読んだときのように
+// 「;」行の大半を未監査にしない。
+func TestRunDeclaredComments(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "esorp.yaml", "syntax:\n"+
+		"  nsis:\n    files: [\"**/*.nsh\"]\n    mode: content-only\n"+
+		"    comments:\n      line: [\";\", \"#\"]\n      block: [[\"/*\", \"*/\"]]\n"+historyRule)
+
+	write(t, root, "install.nsh", "; かつてはこうだった（; 行はまるごとコメント）\nName foo\n# かつてはここにあった\nName bar\n")
+
+	res := run(t, root)
+	if len(res.Skipped) > 0 {
+		t.Errorf("読まなかったファイル = %v, want なし（comments: を宣言したので読める）", res.Skipped)
+	}
+	if got := ids(res); len(got) != 2 {
+		t.Errorf("違反 = %v, want 2 件（; の行と # の行）", got)
+	}
+}
+
 // TestRunLang は、設定が字句を名指しできること（lang:）を確かめる。拡張子も既知の名前も持たない
 // C 系のファイルは、これでしか読めない（cstyle は既定の字句を持たない）。名指しは拡張子より先に
 // 効くので、.yml をシェルとして読ませれば、YAML なら文字列（ブロックスカラー）の中身がコメントに

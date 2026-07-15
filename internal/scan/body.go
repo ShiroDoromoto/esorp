@@ -17,8 +17,8 @@ func Body(text string, spec LangSpec) string {
 	var lines []string
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(line)
-		if spec.BlockClose != "" {
-			line = strings.TrimSpace(strings.TrimSuffix(line, spec.BlockClose))
+		if c := blockClose(spec, line); c != "" {
+			line = strings.TrimSpace(strings.TrimSuffix(line, c))
 		}
 		line = trimLongestPrefix(line, openers)
 		if rest, ok := strings.CutPrefix(line, "*"); ok && spec.BlockStars {
@@ -47,10 +47,9 @@ func BodyLines(text string, spec LangSpec) []string {
 
 	raw := strings.Split(text, "\n")
 	for i, s := range raw {
-		if spec.BlockClose != "" {
-			if t := strings.TrimRight(s, " \t"); strings.HasSuffix(t, spec.BlockClose) {
-				raw[i] = strings.TrimSuffix(t, spec.BlockClose)
-			}
+		t := strings.TrimRight(s, " \t")
+		if c := blockClose(spec, t); c != "" {
+			raw[i] = strings.TrimSuffix(t, c)
 		}
 	}
 	outer := ""
@@ -227,18 +226,31 @@ func isFence(line string) bool {
 	return strings.HasPrefix(strings.TrimLeft(line, " \t"), "```")
 }
 
-// commentOpeners は、剥がすべきコメント記号を長い順に返す。/// は // を接頭辞に含む。
+// commentOpeners は、剥がすべきコメント記号を返す（当てる longestPrefix が長い順に選ぶ）。
+// /// は // を接頭辞に含む。字句が複数の記号を持つ（設定の comments:）なら、そのすべてを並べる。
 func commentOpeners(spec LangSpec) []string {
 	openers := make([]string, 0, len(spec.DocLine)+len(spec.DocBlock)+2)
 	openers = append(openers, spec.DocLine...)
 	openers = append(openers, spec.DocBlock...)
-	if spec.LineComment != "" {
-		openers = append(openers, spec.LineComment)
-	}
-	if spec.BlockOpen != "" {
-		openers = append(openers, spec.BlockOpen)
+	openers = append(openers, spec.lineMarkers()...)
+	for _, p := range spec.blockPairs() {
+		if p[0] != "" {
+			openers = append(openers, p[0])
+		}
 	}
 	return openers
+}
+
+// blockClose は、s の末尾に当たるブロックコメントの閉じ記号のうち、いちばん長いものを返す（無ければ
+// 空）。字句は複数の対を持てる（設定の comments.block）ので、対ごとの閉じを見比べる。
+func blockClose(spec LangSpec, s string) string {
+	best := ""
+	for _, p := range spec.blockPairs() {
+		if c := p[1]; c != "" && strings.HasSuffix(s, c) && len(c) > len(best) {
+			best = c
+		}
+	}
+	return best
 }
 
 func trimLongestPrefix(s string, prefixes []string) string {

@@ -227,14 +227,20 @@ func excludedEverywhere(cfg *config.Config, names []string, dir string) bool {
 	return true
 }
 
-// specOf は、ファイルを読む字句を決める。設定が lang: で名指ししていればそれに従い、無ければ名前・
-// 拡張子から引き、それも空振りしたとき、名前にも拡張子にも手掛かりが無いファイル（.githooks の
+// specOf は、ファイルを読む字句を決める。設定が comments: でコメント記法を宣言していればそれで読み
+// （プリセットの字句で読めない拡張子への逃げ道）、無ければ lang: の名指しに従い、それも無ければ
+// 名前・拡張子から引き、それも空振りしたとき、名前にも拡張子にも手掛かりが無いファイル（.githooks の
 // フックなど）に限ってエントリのファミリの既定で読む。拡張子があるのに登録スキャナが引けないなら
 // 読まない——拡張子は「別の記法かもしれない」という手掛かりであり、既定の記号で半端に読むと（.nsh の
 // コメントは「;」なのに hash の既定「#」で読むように）行の大半が未監査のまま緑に見えるからで、半端に
-// 当たる網は無い網より危ない。読めなかったことは Skipped が告げ、読み方は lang: で名指しできる。
+// 当たる網は無い網より危ない。読めなかったことは Skipped が告げ、読み方は lang: で名指しするか
+// comments: で宣言できる。
 func specOf(cfg *config.Config, m matched) (scan.LangSpec, bool) {
-	if lang := cfg.Syntax[m.syntax].Lang; lang != "" {
+	syn := cfg.Syntax[m.syntax]
+	if syn.Comments.Declared() {
+		return scan.DeclaredSpec(m.syntax, syn.Comments.Line, syn.Comments.BlockPairs()), true
+	}
+	if lang := syn.Lang; lang != "" {
 		return scan.SpecByName(lang)
 	}
 	if spec, ok := scan.SpecFor(m.path); ok {

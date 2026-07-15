@@ -133,7 +133,7 @@ func (s *lexer) tryComment() bool {
 	if !s.has(s.spec.BlockOpen + s.spec.BlockClose) {
 		for _, p := range s.spec.DocBlock {
 			if s.hasDoc(p) {
-				s.blockComment(KindDocBlock)
+				s.blockComment(KindDocBlock, s.spec.BlockOpen, s.spec.BlockClose)
 				return true
 			}
 		}
@@ -142,31 +142,47 @@ func (s *lexer) tryComment() bool {
 		s.lineComment(KindLine)
 		return true
 	}
-	if s.spec.BlockOpen != "" && s.has(s.spec.BlockOpen) {
-		s.blockComment(KindBlock)
+	if open, close, ok := s.blockOpens(); ok {
+		s.blockComment(KindBlock, open, close)
 		return true
 	}
 	return false
+}
+
+// blockOpens は、現在位置がブロックコメントの開きなら、その対の開き/閉じを返す。字句は複数の対を
+// 持てる（設定の comments.block）ので、いちばん長い開きに当てる——接頭辞を共有する対（/* と /**）が
+// あっても、短い方に取り違えて閉じを読み違えない。
+func (s *lexer) blockOpens() (open, close string, ok bool) {
+	for _, p := range s.spec.blockPairs() {
+		if p[0] != "" && s.has(p[0]) && len(p[0]) > len(open) {
+			open, close, ok = p[0], p[1], true
+		}
+	}
+	return open, close, ok
 }
 
 // lineCommentOpens は、現在位置の行コメント記号がコメントを開くかを見る。「//」はどこに現れても
 // 開くが、「#」は語の中にも現れる（シェルの ${x#y}）ので、行頭か空白の直後でなければ開かない。
 // gitignore はさらに狭く、行頭だけ（行中の「#」はパターンの一部）。
 func (s *lexer) lineCommentOpens() bool {
-	if s.spec.LineComment == "" || !s.has(s.spec.LineComment) {
-		return false
+	for _, m := range s.spec.lineMarkers() {
+		if m == "" || !s.has(m) {
+			continue
+		}
+		if s.pos == s.lineStart {
+			return true
+		}
+		if s.spec.LineCommentAtLineStart {
+			continue
+		}
+		if !s.spec.LineCommentSpaced {
+			return true
+		}
+		if c := s.src[s.pos-1]; c == ' ' || c == '\t' || c == '\r' {
+			return true
+		}
 	}
-	if s.pos == s.lineStart {
-		return true
-	}
-	if s.spec.LineCommentAtLineStart {
-		return false
-	}
-	if !s.spec.LineCommentSpaced {
-		return true
-	}
-	c := s.src[s.pos-1]
-	return c == ' ' || c == '\t' || c == '\r'
+	return false
 }
 
 // blockScalar は、いま読み終えた行がブロックスカラーの見出し（key: | / - >-）なら、その中身を
@@ -338,20 +354,20 @@ func (s *lexer) lineComment(kind Kind) {
 	s.emit(kind, line, col, line, text)
 }
 
-func (s *lexer) blockComment(kind Kind) {
+func (s *lexer) blockComment(kind Kind, open, close string) {
 	start, line, col := s.pos, s.line, s.col()
-	s.pos += len(s.spec.BlockOpen)
+	s.pos += len(open)
 	depth := 1
 
 	for s.pos < len(s.src) && depth > 0 {
 		switch {
 		case s.src[s.pos] == '\n':
 			s.newline()
-		case s.spec.BlockNests && s.has(s.spec.BlockOpen):
-			s.pos += len(s.spec.BlockOpen)
+		case s.spec.BlockNests && s.has(open):
+			s.pos += len(open)
 			depth++
-		case s.has(s.spec.BlockClose):
-			s.pos += len(s.spec.BlockClose)
+		case s.has(close):
+			s.pos += len(close)
 			depth--
 		default:
 			s.pos++
