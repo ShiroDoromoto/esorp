@@ -34,94 +34,96 @@ const (
 // defaultRef は --diff の比較先の既定。CI でも pre-commit でも、既定の関心は「main から見た自分の変更」。
 const defaultRef = "origin/HEAD"
 
-const usage = `esorp — コメントの置き場所と書式を監査する
+const usage = `esorp — audit where comments live and how they read
 
-使い方:
-  esorp init                 設定ファイル（esorp.yaml）を生成する
-  esorp init --diff          現行テンプレートと手元の設定の差分を見せる（書き換えない）
-  esorp check                設定に従いツリー全体を監査する
-  esorp check --diff [<ref>] 変更分のみ監査する（既定の <ref> は origin/HEAD）
-  esorp check --text <src>   渡された本文に層2（語彙）だけを当てる（commit-msg フック向け。
-                             <src> は「-」で標準入力、それ以外はファイルのパス）
-  esorp explain <file>:<line>  その行のコメントが、なぜ違反で、どう始末するのかを説明する
-  esorp baseline update      既存の違反をスナップショットする（減る方向のみ）
-  esorp lexicon --try <re>   層2 に足す前に、候補の語彙を自分のコーパスで測る
-  esorp review [<path>...]   層1・層2 を通り抜けたコメントを、問いを添えてまとめて渡す（層3）
-  esorp agent                エージェント向けの入口（層3 に答えるのは、あなた）
-  esorp help                 この使い方を表示する
+Usage:
+  esorp init                 generate a config file (esorp.yaml)
+  esorp init --diff          show the diff between the current template and your config (no rewrite)
+  esorp check                audit the whole tree per the config
+  esorp check --diff [<ref>] audit only the changed part (default <ref> is origin/HEAD)
+  esorp check --text <src>   apply only layer 2 (lexicon) to the given body (for a commit-msg hook;
+                             <src> is "-" for stdin, otherwise a file path)
+  esorp explain <file>:<line>  explain why the comment on that line violates, and how to settle it
+  esorp baseline update      snapshot the existing violations (ratchets down only)
+  esorp lexicon --try <re>   measure a candidate term against your own corpus before adding it to layer 2
+  esorp review [<path>...]   hand off comments that passed layers 1 and 2, each with a question (layer 3)
+  esorp agent                the entry point for agents (you are the one who answers layer 3)
+  esorp help                 show this usage
 
-init のフラグ:
-  --config <path>   生成する場所（既定: esorp.yaml）。--diff では比べる相手
-  --force           既にある設定ファイルを上書きする
-  --diff            現行テンプレートと手元の設定の差分を見せる。設定は生成された時点で
-                    あなたのものなので、ツールを更新しても勝手には変わらない。既定ルールの
-                    改善は、この口から見て、取り込むかどうかを自分で決める
-  --format <fmt>    --diff の出力の形式（text | json、既定: text）
+init flags:
+  --config <path>   where to generate it (default: esorp.yaml). With --diff, the file to compare against
+  --force           overwrite an existing config file
+  --diff            show the diff between the current template and your config. The config is yours
+                    the moment it is generated, so updating the tool never changes it on its own.
+                    This is the one mouth through which improvements to the default rules reach you;
+                    you decide whether to take them in
+  --format <fmt>    output format for --diff (text | json, default: text)
 
-check のフラグ:
-  --config <path>   設定ファイルの場所（既定: esorp.yaml）。この場所がツリーの根になる
-  --format <fmt>    出力の形式（text | json、既定: text）
-  --diff            <ref> と HEAD の分岐点から作業ツリーまでに追加された行に重なる
-                    コメントだけを監査する（pre-commit / PR 向け）。baseline も併せて効く。
-                    <ref> は末尾に置く（他のフラグは <ref> より前に並べる）
-  --text <src>      ファイルからコメントを取り出すのではなく、渡された文字列そのものを本文として
-                    読む。<src> は「-」なら標準入力、それ以外はファイルのパス（中身をまるごと本文と
-                    して読む。コメントを取り出す道は通らない）。当たるのは層2（語彙）だけで、
-                    層1（器・書式）は当たらない——素のテキストは器を持たない。ルールを面で絞るなら
-                    where.syntax: [text]（where.syntax を省いたルールは、この面にも当たる）。
-                    baseline は効かない。--diff とは併せられない。git は知らないので、
-                    コミットメッセージを渡すのはフックの仕事:
+check flags:
+  --config <path>   where the config file is (default: esorp.yaml). This location becomes the tree root
+  --format <fmt>    output format (text | json, default: text)
+  --diff            audit only the comments overlapping lines added between the merge base of <ref>
+                    and HEAD and the working tree (for pre-commit / PR). baseline applies too.
+                    Put <ref> last (the other flags come before <ref>)
+  --text <src>      read the given string itself as the body, rather than extracting comments from a
+                    file. <src> is "-" for stdin, otherwise a file path (its whole content is read as
+                    the body; the comment-extraction path is not taken). Only layer 2 (lexicon) applies;
+                    layer 1 (container / form) does not — raw text has no container. To scope a rule to
+                    this face, use where.syntax: [text] (a rule that omits where.syntax applies here too).
+                    baseline does not apply. Cannot be combined with --diff. esorp does not know git, so
+                    passing a commit message is the hook's job:
 
                         esorp check --text - < "$1"    # .git/hooks/commit-msg
-                        esorp check --text "$1"        # 同じことを、パスで渡す
+                        esorp check --text "$1"        # the same thing, passed by path
 
-  設定に review: を書いてあると、--diff かつ --format json のときだけ、層1・層2 を通り抜けた
-  コメントと、それらに投げる問いが review として出る（層3）。esorp は意味を判定せず、LLM も
-  呼ばない。答えるのは、この出力を読んでいるエージェント自身。終了コードは変わらない。
+  With review: set in the config, and only when both --diff and --format json are given, the comments
+  that passed layers 1 and 2 — and the questions to put to them — are emitted as review (layer 3).
+  esorp does not judge meaning and does not call an LLM. The one who answers is the agent reading this
+  output. The exit code does not change.
 
-explain のフラグ:
-  --config <path>   設定ファイルの場所（既定: esorp.yaml）
-  --format <fmt>    出力の形式（text | json、既定: text）
+explain flags:
+  --config <path>   where the config file is (default: esorp.yaml)
+  --format <fmt>    output format (text | json, default: text)
 
-  <file>:<line> は check の報告をそのまま貼れる（桁まで付いていても受ける）。
-  違反そのものに加え、それを決めた設定の該当箇所（allow の列挙 / form / rules）を指す。
+  <file>:<line> can be pasted straight from a check report (a trailing column is accepted too).
+  Besides the violation itself, it points to the config that decided it (the allow list / form / rules).
 
-baseline update のフラグ:
-  --config <path>   設定ファイルの場所（既定: esorp.yaml）
-  --allow-new       今ある違反を新しく baseline に載せる。CI では使わない
+baseline update flags:
+  --config <path>   where the config file is (default: esorp.yaml)
+  --allow-new       add the current violations to the baseline anew. Not for CI
 
-lexicon のフラグ:
-  --config <path>   設定ファイルの場所（既定: esorp.yaml）。この場所がツリーの根になる
-  --try <re>        当てる候補パターン（Go の正規表現。rules: の pattern と同じ書き方）
-  --format <fmt>    出力の形式（text | json、既定: text）
+lexicon flags:
+  --config <path>   where the config file is (default: esorp.yaml). This location becomes the tree root
+  --try <re>        the candidate pattern to apply (a Go regular expression; same syntax as rules: pattern)
+  --format <fmt>    output format (text | json, default: text)
 
-  層2 の語彙を足す前に、それが自分のコーパスでどれだけ誤検知するかを測る口。当てる本文は層2 と
-  同じ（折り返しを畳んだもの）なので、ここで出た件数が、足したときに当たる件数そのもの。
-  真陽性か偽陽性かは判定しない——当たりを読んで決めるのは、あなた。違反ではないので、当たっても
-  終了コードは 0。
+  A mouth for measuring, before you add a term to layer 2, how much it misfires on your own corpus. The
+  body it applies to is the same as layer 2's (with wraps folded), so the count here is exactly what will
+  match once you add it. It does not judge true positive from false — you read the matches and decide.
+  A match is not a violation, so the exit code stays 0.
 
-review のフラグ:
-  --config <path>   設定ファイルの場所（既定: esorp.yaml）。この場所がツリーの根になる
-  --format <fmt>    出力の形式（text | json、既定: json）
+review flags:
+  --config <path>   where the config file is (default: esorp.yaml). This location becomes the tree root
+  --format <fmt>    output format (text | json, default: json)
 
-  フラグは <path> より前に置く（後ろのフラグはパスとして読まれるので、エラーにします）。
+  Put the flags before <path> (a flag after it is read as a path, so it errors).
 
-  層1・層2 のどれにも当たらなかったコメントを、設定の review.question を添えて渡す口。
-  check --diff が「今書いたもの」を渡すのに対し、こちらは既にあるツリーを渡す——導入初日に、
-  既存のコメントを一度だけエージェントに読ませるためにある。<path> を与えると、そこに入る
-  コメントだけを渡す（ツリー全体を無制限に吐くと、読む側が破綻する）。
-  esorp は判定しない。だから違反も赤/緑も無く、終了コードは 0 のまま（層3 は CI に関与しない）。
+  A mouth for handing off comments that matched none of layers 1 and 2, each with the config's
+  review.question. Where check --diff hands off "what you just wrote", this hands off an existing tree —
+  it is there to let an agent read the existing comments once, on day one. Given <path>, only the comments
+  under it are handed off (dumping the whole tree without bound overwhelms the reader).
+  esorp does not judge. So there is no violation, no red/green, and the exit code stays 0 (layer 3 does not touch CI).
 
-agent のフラグ:
-  --format <fmt>    出力の形式（text | json、既定: text）
+agent flags:
+  --format <fmt>    output format (text | json, default: text)
 
-  esorp を走らせている AI エージェントが読む口。三層のどこを誰が答えるか、どのコマンドを
-  いつ使うか、出力のどこを見るかを、一箇所にまとめて出す。
+  The mouth the AI agent running esorp reads. It lays out, in one place, which of the three layers is
+  answered by whom, which command to use when, and where in the output to look.
 
-終了コード:
-  0  適合
-  1  違反あり
-  2  設定エラー
+Exit codes:
+  0  conforms
+  1  violations found
+  2  config error
 `
 
 func main() {
@@ -158,7 +160,7 @@ func runInput(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprint(stdout, usage)
 		return exitOK
 	default:
-		fmt.Fprintf(stderr, "esorp: 未知のサブコマンド %q\n\n", args[0])
+		fmt.Fprintf(stderr, "esorp: unknown subcommand %q\n\n", args[0])
 		fmt.Fprint(stderr, usage)
 		return exitConfig
 	}
@@ -169,15 +171,15 @@ func runInput(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 func runInit(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	configPath := fs.String("config", "esorp.yaml", "生成する場所")
-	force := fs.Bool("force", false, "既にある設定ファイルを上書きする")
-	diffMode := fs.Bool("diff", false, "現行テンプレートと手元の設定の差分を見せる")
-	format := fs.String("format", "text", "差分の出力の形式（text | json）")
+	configPath := fs.String("config", "esorp.yaml", "where to generate it")
+	force := fs.Bool("force", false, "overwrite an existing config file")
+	diffMode := fs.Bool("diff", false, "show the diff between the current template and your config")
+	format := fs.String("format", "text", "output format for the diff (text | json)")
 	if err := fs.Parse(args); err != nil {
 		return exitConfig
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(stderr, "esorp init: 余分な引数 %q（生成する場所は --config で指定します）\n", fs.Arg(0))
+		fmt.Fprintf(stderr, "esorp init: extra argument %q (specify where to generate it with --config)\n", fs.Arg(0))
 		return exitConfig
 	}
 	if !knownFormat("init", *format, stderr) {
@@ -187,12 +189,12 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		return runInitDiff(*configPath, *format, stdout, stderr)
 	}
 	if *format != "text" {
-		fmt.Fprintf(stderr, "esorp init: --format は --diff の出力の形式です（設定の生成は書くだけで、出力を持ちません）\n")
+		fmt.Fprintf(stderr, "esorp init: --format is the output format for --diff (generating the config only writes; it has no output)\n")
 		return exitConfig
 	}
 
 	if _, err := os.Stat(*configPath); err == nil && !*force {
-		fmt.Fprintf(stderr, "esorp init: %s は既にあります（上書きするなら --force）\n", *configPath)
+		fmt.Fprintf(stderr, "esorp init: %s already exists (pass --force to overwrite)\n", *configPath)
 		return exitConfig
 	}
 	if err := os.WriteFile(*configPath, []byte(config.Template), 0o644); err != nil {
@@ -200,7 +202,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		return exitConfig
 	}
 
-	fmt.Fprintf(stdout, "esorp: %s を書きました。使わない言語のエントリは削ってください\n", *configPath)
+	fmt.Fprintf(stdout, "esorp: wrote %s. Delete the entries for languages you do not use\n", *configPath)
 	fmt.Fprint(stdout, initNextSteps)
 	return exitOK
 }
@@ -211,16 +213,16 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 // review の案内が条件付きなのは、テンプレートが review: をコメントアウトして吐くからで（層3 は
 // 既定を持たない）、書いていない人に、開かない口を勧めない。
 const initNextSteps = `
-既にコメントのあるツリーなら、初回の check は過去のコメントに当たって赤くなります。
-今ある違反をスナップショットしてから始めてください（減る方向にしか動きません）:
+On a tree that already has comments, the first check will hit the past comments and turn red.
+Snapshot the current violations before you begin (it only ever ratchets down):
 
-    esorp baseline update --allow-new    今ある違反を .esorp-baseline.json に載せる
-    esorp check                          ここから増やさない
+    esorp baseline update --allow-new    put the current violations into .esorp-baseline.json
+    esorp check                          go no higher from here
 
-設定の review: を有効にしたなら、層1・層2 を通り抜けた既存のコメントを、導入初日に一度だけ
-エージェントに読ませられます（判定はしません。常に 0 で終わります）:
+If you enable review: in the config, you can have an agent read the existing comments that pass
+layers 1 and 2 once, on day one (it does not judge; it always exits 0):
 
-    esorp review <path>    そこに入るコメントを、問いを添えてまとめて渡す
+    esorp review <path>    hand off the comments under it, each with a question
 `
 
 // runInitDiff は、現行テンプレートと手元の設定の差分を見せる。設定は生成された時点でユーザーのもの
@@ -248,28 +250,28 @@ func runInitDiff(configPath, format string, stdout, stderr io.Writer) int {
 	}
 
 	if len(sections) == 0 {
-		fmt.Fprintf(stdout, "esorp: %s は現行テンプレートと同じです\n", configPath)
+		fmt.Fprintf(stdout, "esorp: %s is the same as the current template\n", configPath)
 		return exitOK
 	}
 
-	fmt.Fprintf(stdout, "%s と現行テンプレートの差分です。\n", configPath)
+	fmt.Fprintf(stdout, "The diff between %s and the current template.\n", configPath)
 	for _, s := range sections {
 		fmt.Fprintf(stdout, "\n%s\n", s.Title)
 		for _, line := range s.Lines() {
 			fmt.Fprintf(stdout, "  %s\n", line)
 		}
 	}
-	fmt.Fprint(stdout, "\n取り込むかどうかはあなたが決めます。esorp は設定を書き換えません。\n")
+	fmt.Fprint(stdout, "\nYou decide whether to take it in. esorp does not rewrite your config.\n")
 	return exitOK
 }
 
 func runCheck(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	configPath := fs.String("config", "esorp.yaml", "設定ファイルの場所")
-	format := fs.String("format", "text", "出力の形式（text | json）")
-	diffMode := fs.Bool("diff", false, "変更行に重なるコメントだけを監査する")
-	text := fs.String("text", "", "取り出しの要らない入力を読む（- は標準入力、それ以外はファイルのパス）")
+	configPath := fs.String("config", "esorp.yaml", "where the config file is")
+	format := fs.String("format", "text", "output format (text | json)")
+	diffMode := fs.Bool("diff", false, "audit only the comments overlapping changed lines")
+	text := fs.String("text", "", "read input that needs no extraction (- is stdin, otherwise a file path)")
 	if err := fs.Parse(args); err != nil {
 		return exitConfig
 	}
@@ -284,10 +286,10 @@ func runCheck(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	ref := defaultRef
 	switch {
 	case !*diffMode && fs.NArg() > 0:
-		fmt.Fprintf(stderr, "esorp check: 余分な引数 %q（監査するツリーは --config の場所で決まります）\n", fs.Arg(0))
+		fmt.Fprintf(stderr, "esorp check: extra argument %q (the tree to audit is set by the --config location)\n", fs.Arg(0))
 		return exitConfig
 	case fs.NArg() > 1:
-		fmt.Fprintf(stderr, "esorp check --diff: 余分な引数 %q（取るのは比較先の <ref> 1つだけです）\n", fs.Arg(1))
+		fmt.Fprintf(stderr, "esorp check --diff: extra argument %q (it takes only one <ref> to compare against)\n", fs.Arg(1))
 		return exitConfig
 	case fs.NArg() == 1:
 		ref = fs.Arg(0)
@@ -339,10 +341,10 @@ func runCheck(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 func runCheckBody(text, configPath, format string, diffMode bool, rest []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	switch {
 	case diffMode:
-		fmt.Fprintln(stderr, "esorp check: --text と --diff は併せられません（渡された本文に、比べる相手はありません）")
+		fmt.Fprintln(stderr, "esorp check: --text cannot be combined with --diff (the given body has nothing to compare against)")
 		return exitConfig
 	case len(rest) > 0:
-		fmt.Fprintf(stderr, "esorp check --text: 余分な引数 %q（読む本文は1つだけです）\n", rest[0])
+		fmt.Fprintf(stderr, "esorp check --text: extra argument %q (it reads only one body)\n", rest[0])
 		return exitConfig
 	}
 
@@ -381,13 +383,13 @@ func readBody(text string, stdin io.Reader) (string, error) {
 	if text == "-" {
 		b, err := io.ReadAll(stdin)
 		if err != nil {
-			return "", fmt.Errorf("標準入力を読めません: %w", err)
+			return "", fmt.Errorf("cannot read stdin: %w", err)
 		}
 		return string(b), nil
 	}
 	b, err := os.ReadFile(text)
 	if err != nil {
-		return "", fmt.Errorf("本文を読めません: %w", err)
+		return "", fmt.Errorf("cannot read the body: %w", err)
 	}
 	return string(b), nil
 }
@@ -395,7 +397,7 @@ func readBody(text string, stdin io.Reader) (string, error) {
 // knownFormat は --format を検める。text と json のどちらでもない指定は、黙って text に落とさない。
 func knownFormat(cmd, format string, stderr io.Writer) bool {
 	if format != "text" && format != "json" {
-		fmt.Fprintf(stderr, "esorp %s: --format %q は不明です（text | json）\n", cmd, format)
+		fmt.Fprintf(stderr, "esorp %s: --format %q is unknown (text | json)\n", cmd, format)
 		return false
 	}
 	return true
@@ -408,8 +410,8 @@ func knownFormat(cmd, format string, stderr io.Writer) bool {
 func runExplain(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("explain", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	configPath := fs.String("config", "esorp.yaml", "設定ファイルの場所")
-	format := fs.String("format", "text", "出力の形式（text | json）")
+	configPath := fs.String("config", "esorp.yaml", "where the config file is")
+	format := fs.String("format", "text", "output format (text | json)")
 	if err := fs.Parse(args); err != nil {
 		return exitConfig
 	}
@@ -417,13 +419,13 @@ func runExplain(args []string, stdout, stderr io.Writer) int {
 		return exitConfig
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintf(stderr, "esorp explain: 説明するコメントを <file>:<line> で1つ指定してください\n")
+		fmt.Fprintf(stderr, "esorp explain: specify one comment to explain as <file>:<line>\n")
 		return exitConfig
 	}
 
 	file, line, ok := parseTarget(fs.Arg(0))
 	if !ok {
-		fmt.Fprintf(stderr, "esorp explain: %q は <file>:<line> の形ではありません\n", fs.Arg(0))
+		fmt.Fprintf(stderr, "esorp explain: %q is not in the form <file>:<line>\n", fs.Arg(0))
 		return exitConfig
 	}
 
@@ -444,10 +446,10 @@ func runExplain(args []string, stdout, stderr io.Writer) int {
 
 	switch {
 	case len(a.result.Skipped) > 0:
-		fmt.Fprintf(stderr, "esorp explain: %s はまだ検査できません（その言語のスキャナがありません）\n", rel)
+		fmt.Fprintf(stderr, "esorp explain: %s cannot be inspected yet (there is no scanner for that language)\n", rel)
 		return exitConfig
 	case a.result.Files == 0:
-		fmt.Fprintf(stderr, "esorp explain: %s は監査の対象ではありません（syntax.files: に当たらないか、gitignore されています）\n", rel)
+		fmt.Fprintf(stderr, "esorp explain: %s is not in scope for the audit (it does not match syntax.files:, or it is gitignored)\n", rel)
 		return exitConfig
 	}
 
@@ -461,10 +463,10 @@ func runExplain(args []string, stdout, stderr io.Writer) int {
 
 	switch {
 	case a.result.Comments == 0:
-		fmt.Fprintf(stdout, "esorp: %s:%d にコメントはありません\n", rel, line)
+		fmt.Fprintf(stdout, "esorp: no comment at %s:%d\n", rel, line)
 		return exitOK
 	case len(a.result.Findings) == 0:
-		fmt.Fprintf(stdout, "esorp: %s:%d のコメントは設定に適合しています\n", rel, line)
+		fmt.Fprintf(stdout, "esorp: the comment at %s:%d conforms to the config\n", rel, line)
 		return exitOK
 	}
 
@@ -530,9 +532,9 @@ func locate(root, file string) (string, error) {
 
 	switch {
 	case strings.HasPrefix(rel, "../"):
-		return "", fmt.Errorf("%s は監査するツリー（%s）の外です", file, root)
+		return "", fmt.Errorf("%s is outside the tree being audited (%s)", file, root)
 	case !readable(abs):
-		return "", fmt.Errorf("%s がありません", file)
+		return "", fmt.Errorf("%s does not exist", file)
 	}
 	return rel, nil
 }
@@ -546,19 +548,19 @@ func readable(path string) bool {
 // 通す（減る方向にしか動かない。もう違反していないキーは落ち、新しい違反は載らない）。
 func runBaseline(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] != "update" {
-		fmt.Fprintf(stderr, "esorp baseline: update を指定してください\n")
+		fmt.Fprintf(stderr, "esorp baseline: specify update\n")
 		return exitConfig
 	}
 
 	fs := flag.NewFlagSet("baseline update", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	configPath := fs.String("config", "esorp.yaml", "設定ファイルの場所")
-	allowNew := fs.Bool("allow-new", false, "今ある違反を新しく baseline に載せる（CI では使わない）")
+	configPath := fs.String("config", "esorp.yaml", "where the config file is")
+	allowNew := fs.Bool("allow-new", false, "add the current violations to the baseline anew (not for CI)")
 	if err := fs.Parse(args[1:]); err != nil {
 		return exitConfig
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(stderr, "esorp baseline update: 余分な引数 %q\n", fs.Arg(0))
+		fmt.Fprintf(stderr, "esorp baseline update: extra argument %q\n", fs.Arg(0))
 		return exitConfig
 	}
 
@@ -567,7 +569,7 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	if a.baselinePath == "" {
-		fmt.Fprintln(stderr, "esorp baseline update: 設定に baseline: がありません")
+		fmt.Fprintln(stderr, "esorp baseline update: the config has no baseline:")
 		return exitConfig
 	}
 
@@ -578,7 +580,7 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 		return exitConfig
 	}
 
-	fmt.Fprintf(stdout, "esorp: baseline を書きました（%d 件 → %d 件 / 今の違反は %d 件）\n",
+	fmt.Fprintf(stdout, "esorp: wrote the baseline (%d → %d entries / %d violations now)\n",
 		before, len(entries), len(a.result.Findings))
 	return exitOK
 }
@@ -590,27 +592,27 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 func runLexicon(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("lexicon", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	configPath := fs.String("config", "esorp.yaml", "設定ファイルの場所")
-	format := fs.String("format", "text", "出力の形式（text | json）")
-	try := fs.String("try", "", "当てる候補パターン（Go の正規表現）")
+	configPath := fs.String("config", "esorp.yaml", "where the config file is")
+	format := fs.String("format", "text", "output format (text | json)")
+	try := fs.String("try", "", "the candidate pattern to apply (a Go regular expression)")
 	if err := fs.Parse(args); err != nil {
 		return exitConfig
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(stderr, "esorp lexicon: 余分な引数 %q（測るツリーは --config の場所で決まります）\n", fs.Arg(0))
+		fmt.Fprintf(stderr, "esorp lexicon: extra argument %q (the tree to measure is set by the --config location)\n", fs.Arg(0))
 		return exitConfig
 	}
 	if !knownFormat("lexicon", *format, stderr) {
 		return exitConfig
 	}
 	if *try == "" {
-		fmt.Fprintln(stderr, "esorp lexicon: --try <パターン> を指定してください")
+		fmt.Fprintln(stderr, "esorp lexicon: specify --try <pattern>")
 		return exitConfig
 	}
 
 	re, err := regexp.Compile(*try)
 	if err != nil {
-		fmt.Fprintf(stderr, "esorp lexicon: --try のパターンが正規表現として読めません: %v\n", err)
+		fmt.Fprintf(stderr, "esorp lexicon: --try's pattern does not parse as a regular expression: %v\n", err)
 		return exitConfig
 	}
 
@@ -649,8 +651,8 @@ func runLexicon(args []string, stdout, stderr io.Writer) int {
 func runReview(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("review", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	configPath := fs.String("config", "esorp.yaml", "設定ファイルの場所")
-	format := fs.String("format", "json", "出力の形式（text | json）")
+	configPath := fs.String("config", "esorp.yaml", "where the config file is")
+	format := fs.String("format", "json", "output format (text | json)")
 	if err := fs.Parse(args); err != nil {
 		return exitConfig
 	}
@@ -659,7 +661,7 @@ func runReview(args []string, stdout, stderr io.Writer) int {
 	}
 	for _, a := range fs.Args() {
 		if strings.HasPrefix(a, "-") {
-			fmt.Fprintf(stderr, "esorp review: %q はパスとして読まれます（フラグは <path> より前に置いてください）\n", a)
+			fmt.Fprintf(stderr, "esorp review: %q is read as a path (put the flags before <path>)\n", a)
 			return exitConfig
 		}
 	}
@@ -670,7 +672,7 @@ func runReview(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	if a.result.Review == nil {
-		fmt.Fprintln(stderr, "esorp review: 設定に review: がありません（層3 の口は開いていません）")
+		fmt.Fprintln(stderr, "esorp review: the config has no review: (the layer 3 mouth is not open)")
 		return exitConfig
 	}
 

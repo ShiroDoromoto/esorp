@@ -94,7 +94,7 @@ func TestRunHelpPrintsUsageToStdout(t *testing.T) {
 	if got := run([]string{"help"}, &stdout, io.Discard); got != exitOK {
 		t.Fatalf("run(help) = %d, want %d", got, exitOK)
 	}
-	if !strings.Contains(stdout.String(), "使い方:") {
+	if !strings.Contains(stdout.String(), "Usage:") {
 		t.Errorf("help が使い方を出していない: %q", stdout.String())
 	}
 }
@@ -589,8 +589,8 @@ func TestExplainNoViolation(t *testing.T) {
 		target string
 		want   string
 	}{
-		{"適合したコメント", "a.go:4", "適合しています"},
-		{"コメントの無い行", "a.go:2", "コメントはありません"},
+		{"適合したコメント", "a.go:4", "conforms to the config"},
+		{"コメントの無い行", "a.go:2", "no comment at"},
 	}
 
 	for _, tt := range tests {
@@ -836,7 +836,7 @@ func TestInitDiff(t *testing.T) {
 	for _, want := range []string{
 		"allow[doc].form.subject",
 		"allow[trailing].label",
-		"esorp は設定を書き換えません",
+		"esorp does not rewrite your config",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("%q が出ていない:\n%s", want, out.String())
@@ -1272,7 +1272,7 @@ func TestReviewFlagAfterPath(t *testing.T) {
 	if got := run([]string{"review", "--config", cfgPath, "internal", "--format", "text"}, &stdout, &stderr); got != exitConfig {
 		t.Fatalf("review <path> --format text = %d, want %d\n%s", got, exitConfig, stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "前に置いて") {
+	if !strings.Contains(stderr.String(), "before <path>") {
 		t.Errorf("直し方を言っていない: %q", stderr.String())
 	}
 }
