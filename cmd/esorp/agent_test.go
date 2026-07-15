@@ -17,8 +17,8 @@ func TestAgentText(t *testing.T) {
 
 	for _, want := range []string{
 		"esorp check --diff --format json",
-		"層3",
-		"esorp は LLM を呼ばない",
+		"Layer 3",
+		"esorp calls no LLM",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("agent の出力に %q がありません:\n%s", want, out.String())

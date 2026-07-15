@@ -14,12 +14,12 @@ import (
 func runAgent(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("agent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	format := fs.String("format", "text", "出力の形式（text | json）")
+	format := fs.String("format", "text", "output format (text | json)")
 	if err := fs.Parse(args); err != nil {
 		return exitConfig
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(stderr, "esorp agent: 余分な引数 %q\n", fs.Arg(0))
+		fmt.Fprintf(stderr, "esorp agent: unexpected argument %q\n", fs.Arg(0))
 		return exitConfig
 	}
 	if !knownFormat("agent", *format, stderr) {
@@ -88,114 +88,114 @@ func agentMap() agentDoc {
 	return agentDoc{
 		Version: 1,
 		Tool:    "esorp",
-		Summary: "コメントの置き場所と書式を、esorp.yaml の宣言に照らして監査する",
-		Purpose: "落とそうとしているのは、目の前のコードの説明ではないコメント——履歴・事情・作業メモ。\n" +
-			"書かれた瞬間から陳腐化を始め、コードが変わってもコメントは追随せず、\n" +
-			"残ったコメントが将来の読み手（次のエージェントを含む）をミスリードする。",
+		Summary: "Audit where comments are placed and how they are written, against the declarations in esorp.yaml",
+		Purpose: "What this drops is comments that do not explain the code in front of you — history, circumstances, working notes.\n" +
+			"They start going stale the moment they are written; when the code changes the comment does not follow,\n" +
+			"and the comment left behind misleads future readers (the next agent included).",
 		Layers: []agentLayer{
 			{
 				Layer:         1,
-				Name:          "器と書式",
-				Sees:          "コメントがどこに入っているか、どんな形をしているか",
+				Name:          "Vessel and form",
+				Sees:          "Where a comment sits, and what shape it has",
 				Deterministic: true,
-				Who:           "esorp。CI と pre-commit がそのまま赤/緑にする",
+				Who:           "esorp. CI and pre-commit turn it straight into red/green",
 			},
 			{
 				Layer:         2,
-				Name:          "語彙",
-				Sees:          "コメント本文に現れる、そのプロジェクト固有の専用句",
+				Name:          "Lexicon",
+				Sees:          "Project-specific set phrases that appear in a comment's body",
 				Deterministic: true,
-				Who:           "esorp。ただし語彙を持つのは設定ファイルだけ（init がプリセットを書き込む。消すのも足すのもユーザー）",
+				Who:           "esorp — but the lexicon lives only in the config file (init writes a preset; removing or adding terms is the user's)",
 			},
 			{
 				Layer:         3,
-				Name:          "意味",
-				Sees:          "層1・層2 を通り抜けたコメントが、コードの説明か、事情・履歴・作業メモか",
+				Name:          "Meaning",
+				Sees:          "Whether a comment that passed layers 1 and 2 explains the code, or tells circumstances, history, or working notes",
 				Deterministic: false,
-				Who:           "あなた（esorp を走らせているエージェント）。esorp は LLM を呼ばず、渡し方だけを持つ",
+				Who:           "You (the agent running esorp). esorp calls no LLM; it only hands the material over",
 			},
 		},
 		Cycle: []string{
-			"コードを書き終えたら、コミットする前に `esorp check --diff --format json` を走らせる。\n" +
-				"見るのは自分が触った変更分だけで、既存コードの違反は baseline が抑えている。",
-			"violations が出たら直す。正解はたいてい削除——履歴はバージョン管理が保持しているし、\n" +
-				"違反コメントの大半に移送先など無い。\n" +
-				"なぜ違反なのか腑に落ちなければ `esorp explain <path>:<line>` を引く。",
-			"review が出ていたら、review.comments の1件ずつに review.question を当てて、あなたが答える。\n" +
-				"事情・履歴・作業メモを語っているコメントは、器も形も正しくても消す。\n" +
-				"ここは CI が見ない——層3 の網は、あなたしか張れない。",
-			"review が出ていなければ、層3 は閉じている（設定に review: が無いか、--diff で絞っていない）。\n" +
-				"開くなら esorp.yaml に review.question を書く。",
-			"終了コードが 0 になるまで繰り返す。",
+			"When you finish writing code, run `esorp check --diff --format json` before you commit.\n" +
+				"It looks only at the changes you touched; violations in existing code are held down by the baseline.",
+			"If violations appear, fix them. The answer is usually deletion — version control keeps the history,\n" +
+				"and most offending comments have nowhere to be moved to.\n" +
+				"If you don't see why it is a violation, look it up with `esorp explain <path>:<line>`.",
+			"If a review appears, apply review.question to each of review.comments, one by one, and you answer.\n" +
+				"A comment that tells circumstances, history, or working notes goes, even when its vessel and form are correct.\n" +
+				"CI does not watch here — the layer-3 net is one only you can cast.",
+			"If no review appears, layer 3 is closed (the config has no review:, or you did not narrow with --diff).\n" +
+				"To open it, write review.question in esorp.yaml.",
+			"Repeat until the exit code is 0.",
 		},
 		Commands: []agentCommand{
 			{
 				Command: "esorp check --diff --format json",
-				What:    "変更分に現れたコメントだけを監査し、違反と、層3 に渡す材料（review）を機械可読で出す",
-				When:    "コミットする前。エージェントとしての主戦場はここ",
+				What:    "Audit only the comments that appear in the changes, and emit — machine-readable — the violations and the material handed to layer 3 (review)",
+				When:    "Before you commit. This is your main battleground as an agent",
 			},
 			{
 				Command: "esorp check --format json",
-				What:    "ツリー全体を監査する（review は出ない）",
-				When:    "CI と、導入時の現状把握",
+				What:    "Audit the whole tree (no review is emitted)",
+				When:    "CI, and taking stock when you first adopt esorp",
 			},
 			{
 				Command: "esorp explain <path>:<line> --format json",
-				What:    "その行のコメントが、なぜ違反で、どう始末するのかを、根拠となる設定の該当箇所ごと示す",
-				When:    "違反の理由が腑に落ちないとき。check の報告の <path>:<line> をそのまま貼れる",
+				What:    "Show why the comment on that line is a violation and how to deal with it, along with the config passage it rests on",
+				When:    "When the reason for a violation doesn't land. You can paste the <path>:<line> from check's report as is",
 			},
 			{
 				Command: "esorp init",
-				What:    "設定ファイル（esorp.yaml）を生成する",
-				When:    "導入時。生成された設定はその時点でユーザーのもので、esorp は以後それを書き換えない",
+				What:    "Generate the config file (esorp.yaml)",
+				When:    "At adoption. The generated config is the user's from that moment on, and esorp never rewrites it afterward",
 			},
 			{
 				Command: "esorp init --diff --format json",
-				What:    "現行テンプレートと手元の設定の差分を出す（書き換えない）",
-				When:    "esorp を更新した後。既定ルールの改善を取り込むかどうかは、読んだあなたが決める",
+				What:    "Emit the diff between the current template and your local config (without rewriting it)",
+				When:    "After you update esorp. Whether to take in improvements to the default rules is for you, the reader, to decide",
 			},
 			{
 				Command: "esorp baseline update",
-				What:    "今ある違反をスナップショットする。載せた違反は報告されないが、一覧として見える状態で残る",
-				When:    "導入時に一度。ラチェットは減る方向にしか動かず、CI では使わない",
+				What:    "Snapshot the violations you have now. A listed violation is not reported, but stays visible as a roster",
+				When:    "Once at adoption. The ratchet only ever turns toward fewer, and is not used in CI",
 			},
 			{
 				Command: "esorp review [<path>...]",
-				What:    "層1・層2 を通り抜けたコメントを、設定の問いを添えてまとめて出す。判定はしない（答えるのは、あなた）",
-				When:    "導入初日に一度。既にあるコメントを読ませる口で、日常は check --diff の review で足りる。ツリー全体が多すぎるなら <path> で絞る",
+				What:    "Gather the comments that passed layers 1 and 2 and emit them together with the config's question. It makes no judgment (you are the one who answers)",
+				When:    "Once on your first day. It is the mouth that makes esorp read comments already there; day to day, check --diff's review is enough. If the whole tree is too much, narrow it with <path>",
 			},
 			{
 				Command: "esorp check --text <src> --format json",
-				What:    "渡された文字列そのものを本文として読み、層2（語彙）だけを当てる（<src> は「-」で標準入力、それ以外はファイルのパス）。層1（器・書式）は当たらず、baseline も無い（出力の layers / baseline がそう告げる）",
-				When:    "コメントから追い出した事情の逃げ場——コミットメッセージ・PR 本文・リリースノート——に、同じ語彙を当てるとき。esorp は git を知らないので、本文を渡すのは呼び手（commit-msg フック）の仕事",
+				What:    "Read the given string itself as a body and apply only layer 2 (lexicon) (<src> is \"-\" for stdin, otherwise a file path). Layer 1 (vessel and form) does not apply, and there is no baseline (the output's layers / baseline say so)",
+				When:    "When you apply the same lexicon to where circumstances driven out of comments take refuge — commit messages, PR bodies, release notes. esorp knows nothing of git, so handing it the body is the caller's job (the commit-msg hook)",
 			},
 			{
-				Command: "esorp lexicon --try <正規表現> --format json",
-				What:    "候補の語彙をツリーの全コメントに当て、件数と当たった本文を出す。判定はしない（真陽性か偽陽性かを読むのは、あなた）",
-				When:    "層2 に語彙を足す前。誤検知するガードは例外指定を誘発し、やがてツールごと無視される。測らずに足さない",
+				Command: "esorp lexicon --try <regexp> --format json",
+				What:    "Apply a candidate lexicon term to every comment in the tree and emit the count and the bodies it matched. It makes no judgment (reading true positive from false is yours)",
+				When:    "Before you add a term to layer 2. A guard that false-positives invites exception markers, and eventually the whole tool gets ignored. Don't add without measuring",
 			},
 		},
 		Output: agentOutput{
 			Command:    "esorp check --diff --format json",
-			Violations: "違反。1件ずつに path / line / col / id / place / kind / text / message が付く。message は始末のしかたまで書いてある",
-			Review:     "層3 の材料。review.question（あなたに投げる問い）と review.comments（層1・層2 を通り抜けたコメント）。答えはここに無い——出すのはあなた",
-			Closed:     "review が無ければ層3 は閉じている。設定に review: が無いか、--diff で絞っていないか、そのどちらか",
+			Violations: "Violations. Each carries path / line / col / id / place / kind / text / message. The message even tells you how to deal with it",
+			Review:     "The material for layer 3. review.question (the question put to you) and review.comments (the comments that passed layers 1 and 2). The answer is not here — you are the one who produces it",
+			Closed:     "If there is no review, layer 3 is closed. Either the config has no review:, or you did not narrow with --diff",
 		},
 		ExitCodes: []agentExit{
-			{Code: exitOK, Meaning: "適合"},
-			{Code: exitViolated, Meaning: "違反あり（review の中身は終了コードを動かさない）"},
-			{Code: exitConfig, Meaning: "設定エラー（設定が読めない・スキーマ違反・使い方の誤り）"},
+			{Code: exitOK, Meaning: "Conforms"},
+			{Code: exitViolated, Meaning: "Violations present (the contents of review do not move the exit code)"},
+			{Code: exitConfig, Meaning: "Config error (config unreadable, schema violation, or misuse)"},
 		},
 		Rules: []string{
-			"esorp は LLM を呼ばない。層3 の判定はあなたが行う。API キーも課金もネットワークも要らない。",
-			"esorp は設定を書き換えない。テンプレートとの差分を見せるところまでがツールの仕事で、\n" +
-				"取り込むかどうかは読み手が決める。",
-			"インライン抑制コメント（// esorp:ignore）は無い。抑制コメント自体が「許可されていない器の\n" +
-				"コメント」になって自己矛盾するし、違反を消す代わりに抑制を足す抜け道になる。\n" +
-				"例外は baseline に載せる（＝一覧として見える状態にする）。",
-			"esorp はコメントを書き換えない。監査に徹する。直すのはあなた。",
-			"禁止語彙の源泉は esorp.yaml ひとつ。コミットメッセージにも同じ語彙を当てる口（check --text）が\n" +
-				"あるので、フックに別の正規表現を書かない——分裂した denylist は必ずドリフトする。",
+			"esorp calls no LLM. The layer-3 judgment is yours to make. No API key, no billing, no network required.",
+			"esorp does not rewrite the config. Showing the diff against the template is where the tool's job ends;\n" +
+				"whether to take it in is for the reader to decide.",
+			"There is no inline suppression comment (// esorp:ignore). A suppression comment would itself become a comment in\n" +
+				"an unpermitted vessel — a contradiction — and it would be a loophole for adding a suppression instead of removing the violation.\n" +
+				"Put exceptions on the baseline (= keep them visible as a roster).",
+			"esorp does not rewrite comments. It stays an audit. Fixing them is yours.",
+			"The single source of the forbidden lexicon is esorp.yaml. There is a mouth (check --text) that applies the same lexicon\n" +
+				"to commit messages too, so don't write a separate regexp in the hook — a split denylist always drifts.",
 		},
 	}
 }
@@ -207,37 +207,37 @@ func writeAgentText(w io.Writer, m agentDoc) error {
 
 	fmt.Fprintf(&b, "%s — %s\n\n%s\n", m.Tool, m.Summary, m.Purpose)
 
-	b.WriteString("\n三層のうち、あなたが答えるのは層3 だけです。\n\n")
+	b.WriteString("\nOf the three layers, the only one you answer is layer 3.\n\n")
 	for _, l := range m.Layers {
-		fmt.Fprintf(&b, "  層%d %s（%s）\n", l.Layer, l.Name, decided(l.Deterministic))
-		fmt.Fprintf(&b, "    見るもの: %s\n", l.Sees)
-		fmt.Fprintf(&b, "    答える者: %s\n", l.Who)
+		fmt.Fprintf(&b, "  Layer %d %s (%s)\n", l.Layer, l.Name, decided(l.Deterministic))
+		fmt.Fprintf(&b, "    Sees: %s\n", l.Sees)
+		fmt.Fprintf(&b, "    Answered by: %s\n", l.Who)
 	}
 
-	b.WriteString("\nあなたのサイクル:\n\n")
+	b.WriteString("\nYour cycle:\n\n")
 	for i, s := range m.Cycle {
 		fmt.Fprintf(&b, "  %d. ", i+1)
 		continued(&b, s, "     ")
 	}
 
-	b.WriteString("\nコマンド:\n\n")
+	b.WriteString("\nCommands:\n\n")
 	for _, c := range m.Commands {
 		fmt.Fprintf(&b, "  %s\n", c.Command)
 		fmt.Fprintf(&b, "    %s\n", c.What)
-		fmt.Fprintf(&b, "    いつ: %s\n", c.When)
+		fmt.Fprintf(&b, "    When: %s\n", c.When)
 	}
 
-	fmt.Fprintf(&b, "\n%s の読み方:\n\n", m.Output.Command)
+	fmt.Fprintf(&b, "\nHow to read %s:\n\n", m.Output.Command)
 	fmt.Fprintf(&b, "  violations: %s\n", m.Output.Violations)
 	fmt.Fprintf(&b, "  review: %s\n", m.Output.Review)
-	fmt.Fprintf(&b, "  review が無いとき: %s\n", m.Output.Closed)
+	fmt.Fprintf(&b, "  when there is no review: %s\n", m.Output.Closed)
 
-	b.WriteString("\n終了コード:\n\n")
+	b.WriteString("\nExit codes:\n\n")
 	for _, e := range m.ExitCodes {
 		fmt.Fprintf(&b, "  %d  %s\n", e.Code, e.Meaning)
 	}
 
-	b.WriteString("\n動かない線:\n\n")
+	b.WriteString("\nLines that don't move:\n\n")
 	for _, r := range m.Rules {
 		b.WriteString("  - ")
 		continued(&b, r, "    ")
@@ -261,9 +261,9 @@ func continued(b *strings.Builder, s, indent string) {
 
 func decided(deterministic bool) string {
 	if deterministic {
-		return "決定論的"
+		return "deterministic"
 	}
-	return "非決定的"
+	return "non-deterministic"
 }
 
 func encodeAgent(w io.Writer, m agentDoc) error {
