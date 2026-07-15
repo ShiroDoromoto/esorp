@@ -52,9 +52,9 @@ func ReviewText(w io.Writer, rv *audit.Review) error {
 		b.WriteByte('\n')
 	}
 
-	fmt.Fprintf(&b, "%d 件のコメントが層1・層2 を通り抜けました。\n\n", len(rv.Comments))
+	fmt.Fprintf(&b, "%d comments passed layers 1 and 2.\n\n", len(rv.Comments))
 	indent(&b, strings.TrimRight(rv.Question, "\n"))
-	b.WriteString("\n答えるのは esorp ではありません。この出力を読んでいるエージェント自身です。\n")
+	b.WriteString("\nThe one who answers is not esorp — it is the agent reading this output.\n")
 
 	_, err := io.WriteString(w, b.String())
 	return err

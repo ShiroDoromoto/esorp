@@ -32,9 +32,9 @@ func TestBodyText(t *testing.T) {
   この関数の同期版は削除ずみ。
   変化を語っています。今の姿だけを書いてください。
 
-1 件の違反
-当たったのは層2（語彙）だけです。層1（器・書式）は当たりません（渡された本文は器を持ちません）。
-baseline はありません（その場限りの入力なので、抑制のキーが立ちません）。
+1 violations
+Only layer 2 (lexicon) applied. Layer 1 (vessel and form) does not apply (the body passed in has no vessel).
+There is no baseline (a one-off input has no key for a suppression to stand on).
 `)
 }
 
@@ -46,9 +46,9 @@ func TestBodyTextClean(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wants(t, b.String(), `esorp: 違反はありません
-当たったのは層2（語彙）だけです。層1（器・書式）は当たりません（渡された本文は器を持ちません）。
-baseline はありません（その場限りの入力なので、抑制のキーが立ちません）。
+	wants(t, b.String(), `esorp: no violations
+Only layer 2 (lexicon) applied. Layer 1 (vessel and form) does not apply (the body passed in has no vessel).
+There is no baseline (a one-off input has no key for a suppression to stand on).
 `)
 }
 

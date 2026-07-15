@@ -13,8 +13,8 @@ import (
 // でもないので、器を持たない。baseline も無い——抑制のキーはパスと本文で立つので、その場限りの入力
 // には成立しない。黙って飛ばすと、通ったことが「層1 も通った」「baseline で抑えられる」と読まれる。
 // 当たらない層は、出力で言う。
-const BodyNote = `当たったのは層2（語彙）だけです。層1（器・書式）は当たりません（渡された本文は器を持ちません）。
-baseline はありません（その場限りの入力なので、抑制のキーが立ちません）。`
+const BodyNote = `Only layer 2 (lexicon) applied. Layer 1 (vessel and form) does not apply (the body passed in has no vessel).
+There is no baseline (a one-off input has no key for a suppression to stand on).`
 
 // BodyText は、取り出しの要らない入力（check --text）の違反を人間向けに書く。位置は入力の中の行
 // （パスは無い）。当たった段落と始末のしかたを添える。
@@ -36,9 +36,9 @@ func BodyText(w io.Writer, vs []rule.Violation) error {
 	}
 
 	if len(vs) == 0 {
-		b.WriteString("esorp: 違反はありません\n")
+		b.WriteString("esorp: no violations\n")
 	} else {
-		fmt.Fprintf(&b, "%d 件の違反\n", len(vs))
+		fmt.Fprintf(&b, "%d violations\n", len(vs))
 	}
 	fmt.Fprintf(&b, "%s\n", BodyNote)
 

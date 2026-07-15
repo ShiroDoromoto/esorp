@@ -123,7 +123,7 @@ func TestCheckTextSaysWhatDoesNotApply(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("code = %d, want %d", code, exitOK)
 	}
-	for _, want := range []string{"層1（器・書式）は当たりません", "baseline はありません"} {
+	for _, want := range []string{"Layer 1 (vessel and form) does not apply", "There is no baseline"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("出力に %q が現れない:\n%s", want, out)
 		}

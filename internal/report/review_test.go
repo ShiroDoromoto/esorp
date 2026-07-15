@@ -33,11 +33,11 @@ func TestReviewText(t *testing.T) {
 	wants(t, b.String(), `internal/store/index.go:4:1  place=doc kind=docline
   // Index は、鍵から位置を引く。
 
-1 件のコメントが層1・層2 を通り抜けました。
+1 comments passed layers 1 and 2.
 
   このコメントは、コードから読み取れない事情を語っていますか。
 
-答えるのは esorp ではありません。この出力を読んでいるエージェント自身です。
+The one who answers is not esorp — it is the agent reading this output.
 `)
 }
 
