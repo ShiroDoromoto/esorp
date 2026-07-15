@@ -1175,9 +1175,9 @@ func TestLexiconTry(t *testing.T) {
 	for _, want := range []string{
 		"a.go:3:1  place=doc kind=line",
 		"a.go:5:2  place=leading kind=line",
-		"2 件が当たりました",
-		"1 ファイル / 3 コメント中 66.67%",
-		"esorp は判定しません",
+		"matched 2",
+		"1 files / 3 comments, 66.67%",
+		"esorp does not judge",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("出力に %q が無い:\n%s", want, out)

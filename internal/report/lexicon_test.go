@@ -59,15 +59,15 @@ internal/store/tree.go:20:1  place=doc kind=docline  seam=dependent
   // この鍵は
   // 以前は 32 バイトだった。
 
-以前は に 2 件が当たりました（4 ファイル / 50 コメント中 4.00%）
+以前は matched 2 (4 files / 50 comments, 4.00%)
 
-面ごとの内訳:
-  cstyle              2 件 / 40 コメント（5.00%）
-  hash                0 件 / 10 コメント（0.00%）
+Breakdown by surface:
+  cstyle              2 / 40 comments (5.00%)
+  hash                0 / 10 comments (0.00%)
 
-text 面（check --text）は測れません。渡される本文はツリーの外にあり、当てるコーパスがありません。
-この面に当てるルールは、当たりを見て決めてください（0 件と出しているのではなく、測っていません）。
-真陽性か偽陽性かは、esorp は判定しません。当たりを読んで、足すかどうかを決めてください。
+The text surface (check --text) cannot be measured. The body passed in lives outside the tree, and there is no corpus to match against.
+Decide rules for this surface by reading the matches (this is not 0 matches — it is not measured).
+esorp does not judge true positive from false. Read the matches and decide whether to add the term.
 `)
 }
 
@@ -78,11 +78,11 @@ func TestTryTextNoComments(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wants(t, b.String(), `以前は に 0 件が当たりました（0 ファイル / 0 コメント中 0%）
+	wants(t, b.String(), `以前は matched 0 (0 files / 0 comments, 0%)
 
-text 面（check --text）は測れません。渡される本文はツリーの外にあり、当てるコーパスがありません。
-この面に当てるルールは、当たりを見て決めてください（0 件と出しているのではなく、測っていません）。
-真陽性か偽陽性かは、esorp は判定しません。当たりを読んで、足すかどうかを決めてください。
+The text surface (check --text) cannot be measured. The body passed in lives outside the tree, and there is no corpus to match against.
+Decide rules for this surface by reading the matches (this is not 0 matches — it is not measured).
+esorp does not judge true positive from false. Read the matches and decide whether to add the term.
 `)
 }
 
@@ -118,7 +118,7 @@ func TestTryJSON(t *testing.T) {
   ],
   "text_surface": {
     "measured": false,
-    "reason": "text 面（check --text）は測れません。渡される本文はツリーの外にあり、当てるコーパスがありません。\nこの面に当てるルールは、当たりを見て決めてください（0 件と出しているのではなく、測っていません）。"
+    "reason": "The text surface (check --text) cannot be measured. The body passed in lives outside the tree, and there is no corpus to match against.\nDecide rules for this surface by reading the matches (this is not 0 matches — it is not measured)."
   },
   "hits": [
     {

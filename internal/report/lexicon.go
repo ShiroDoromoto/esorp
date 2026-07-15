@@ -19,19 +19,19 @@ func TryText(w io.Writer, t *audit.Trial) error {
 		b.WriteByte('\n')
 	}
 
-	fmt.Fprintf(&b, "%s に %d 件が当たりました（%d ファイル / %d コメント中 %s）\n",
+	fmt.Fprintf(&b, "%s matched %d (%d files / %d comments, %s)\n",
 		t.Pattern, len(t.Hits), t.Files, t.Comments, share(len(t.Hits), t.Comments))
 
 	if len(t.Surfaces) > 0 {
-		b.WriteString("\n面ごとの内訳:\n")
+		b.WriteString("\nBreakdown by surface:\n")
 		for _, s := range t.Surfaces {
-			fmt.Fprintf(&b, "  %-16s %4d 件 / %d コメント（%s）\n",
+			fmt.Fprintf(&b, "  %-16s %4d / %d comments (%s)\n",
 				s.Syntax, s.Hits, s.Comments, share(s.Hits, s.Comments))
 		}
 	}
 
 	fmt.Fprintf(&b, "\n%s\n", TrySurfaceNote)
-	b.WriteString("真陽性か偽陽性かは、esorp は判定しません。当たりを読んで、足すかどうかを決めてください。\n")
+	b.WriteString("esorp does not judge true positive from false. Read the matches and decide whether to add the term.\n")
 
 	_, err := io.WriteString(w, b.String())
 	return err
@@ -41,8 +41,8 @@ func TryText(w io.Writer, t *audit.Trial) error {
 // では当たりまくる——それは普通に起きるので、面をまたいで見る。text 面（check --text に渡される
 // 本文）だけは測れない。コミットメッセージは手元のツリーに残っておらず、当てるコーパスが無い——
 // 「測ってから足す」は、この面には効かせようがない。無いものを 0 件と書けば、測ったように見える。
-const TrySurfaceNote = `text 面（check --text）は測れません。渡される本文はツリーの外にあり、当てるコーパスがありません。
-この面に当てるルールは、当たりを見て決めてください（0 件と出しているのではなく、測っていません）。`
+const TrySurfaceNote = `The text surface (check --text) cannot be measured. The body passed in lives outside the tree, and there is no corpus to match against.
+Decide rules for this surface by reading the matches (this is not 0 matches — it is not measured).`
 
 // seamMark は、折り返しの継ぎ目に左右される当たりに添える印（→ SeamNote）。当たりの見出しに出す
 // のは、その1件だけの話だから——測っている最中に、どの当たりが継ぎ目のせいかを見分けられる。
