@@ -171,6 +171,28 @@ func TestRunFamilyFallback(t *testing.T) {
 	}
 }
 
+// TestRunUnknownExtSkipped は、拡張子があるのに登録スキャナが引けないファイル（.nsh）が、ファミリの
+// 既定へ落ちず Skipped になることを確かめる。同じ hash エントリの .sh は既定の字句で読まれ、拡張子を
+// 持たない .githooks のフックも既定で読まれる——.nsh だけが、既定の「#」で読むと「;」行の大半を
+// 未監査にするので読まない。
+func TestRunUnknownExtSkipped(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "esorp.yaml", "syntax:\n"+
+		"  hash:\n    files: [\"**/*.nsh\", \"**/*.sh\", \".githooks/*\"]\n    mode: content-only\n"+historyRule)
+
+	write(t, root, "install.nsh", "; かつてはこうだった\n")
+	write(t, root, "build.sh", "# かつてはこうだった\n")
+	write(t, root, ".githooks/pre-commit", "# かつてはこうだった\n")
+
+	res := run(t, root)
+	if len(res.Skipped) != 1 || res.Skipped[0] != "install.nsh" {
+		t.Errorf("読まなかったファイル = %v, want [install.nsh]（.nsh は既定へ落とさない）", res.Skipped)
+	}
+	if got := ids(res); len(got) != 2 {
+		t.Errorf("違反 = %v, want 2 件（.sh と pre-commit のみ）", got)
+	}
+}
+
 // TestRunLang は、設定が字句を名指しできること（lang:）を確かめる。拡張子も既知の名前も持たない
 // C 系のファイルは、これでしか読めない（cstyle は既定の字句を持たない）。名指しは拡張子より先に
 // 効くので、.yml をシェルとして読ませれば、YAML なら文字列（ブロックスカラー）の中身がコメントに
