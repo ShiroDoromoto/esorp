@@ -135,8 +135,8 @@ func TestExplainLexicon(t *testing.T) {
 	wants(t, b.String(), `internal/store/index.go:20:1  no-history  place=doc kind=docline
   // 以前はここで畳んでいた。
   履歴を書かないでください。
-  この当たりは折り返しの継ぎ目に左右されます。半角と全角の境目で行が折り返されており、
-  原文にそこの空白が在ったかは復元できません。原文に直す箇所が無ければ、baseline に載せてください。
+  This match depends on a line-wrap seam. The line wrapped at the boundary between half-width and full-width characters,
+  and whether whitespace stood there in the original cannot be recovered. If there is nothing to fix in the original, put it on the baseline.
 
   決めているのは esorp.yaml の rules[0] です:
     id: no-history

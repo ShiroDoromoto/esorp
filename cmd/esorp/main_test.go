@@ -111,7 +111,7 @@ func TestCheckTextOutput(t *testing.T) {
 		"a.go:8:6  label-required  place=trailing kind=line",
 		"a.go:10:2  place-not-allowed  place=orphan kind=line",
 		"  この位置のコメントは許可されていません。",
-		"3 件の違反",
+		"3 violations",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("出力に %q が無い:\n%s", want, out)
@@ -179,7 +179,7 @@ func TestBaselineUpdateThenCheck(t *testing.T) {
 	if got := run([]string{"check", "--config", cfgPath}, &stdout, io.Discard); got != exitOK {
 		t.Fatalf("baseline に載せた後は適合のはず: %d\n%s", got, stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "baseline が 3 件を抑えています") {
+	if !strings.Contains(stdout.String(), "baseline holds down 3") {
 		t.Errorf("抑えた件数を告げていない: %q", stdout.String())
 	}
 
@@ -254,7 +254,7 @@ func F() {
 	if got := run([]string{"check", "--config", cfgPath}, &full, io.Discard); got != exitViolated {
 		t.Fatalf("check = %d, want %d", got, exitViolated)
 	}
-	if !strings.Contains(full.String(), "2 件の違反") {
+	if !strings.Contains(full.String(), "2 violations") {
 		t.Fatalf("ツリー全体なら 2 件のはず:\n%s", full.String())
 	}
 
@@ -263,7 +263,7 @@ func F() {
 		t.Fatalf("check --diff = %d, want %d", got, exitViolated)
 	}
 	out := only.String()
-	if !strings.Contains(out, "1 件の違反") || !strings.Contains(out, "place=orphan") {
+	if !strings.Contains(out, "1 violations") || !strings.Contains(out, "place=orphan") {
 		t.Errorf("--diff が変更行に絞れていない:\n%s", out)
 	}
 	if strings.Contains(out, "place=leading") {
@@ -314,7 +314,7 @@ func TestCheckDiffUntrackedFile(t *testing.T) {
 	if got := run([]string{"check", "--config", cfgPath, "--diff", "HEAD"}, &stdout, io.Discard); got != exitViolated {
 		t.Fatalf("check --diff = %d, want %d\n%s", got, exitViolated, stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "3 件の違反") {
+	if !strings.Contains(stdout.String(), "3 violations") {
 		t.Errorf("新しいファイルの違反を拾えていない:\n%s", stdout.String())
 	}
 }

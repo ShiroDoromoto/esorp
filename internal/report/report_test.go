@@ -74,7 +74,7 @@ func TestTextNoFindings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wants(t, b.String(), "esorp: 違反はありません（3 ファイル / 12 コメント）\n")
+	wants(t, b.String(), "esorp: no violations (3 files / 12 comments)\n")
 }
 
 // TestTextNoFindingsWithBaseline は、抑えた件数が、違反が無いときにも見える所に出ることを見る。
@@ -84,7 +84,7 @@ func TestTextNoFindingsWithBaseline(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wants(t, b.String(), "esorp: 違反はありません（3 ファイル / 12 コメント / baseline が 2 件を抑えています）\n")
+	wants(t, b.String(), "esorp: no violations (3 files / 12 comments / baseline holds down 2)\n")
 }
 
 // TestText は、1件が「どこで・何に反し・何が書かれていて・どう始末するか」で閉じていること、
@@ -109,10 +109,10 @@ func TestText(t *testing.T) {
 internal/store/index.go:20:1  no-history  place=doc kind=docline
   // 以前はここで畳んでいた。
   履歴を書かないでください。
-  この当たりは折り返しの継ぎ目に左右されます。半角と全角の境目で行が折り返されており、
-  原文にそこの空白が在ったかは復元できません。原文に直す箇所が無ければ、baseline に載せてください。
+  This match depends on a line-wrap seam. The line wrapped at the boundary between half-width and full-width characters,
+  and whether whitespace stood there in the original cannot be recovered. If there is nothing to fix in the original, put it on the baseline.
 
-2 件の違反（3 ファイル / 12 コメント / baseline が 1 件を抑えています）
+2 violations (3 files / 12 comments / baseline holds down 1)
 `)
 }
 
@@ -129,7 +129,7 @@ func TestTextWithoutMessage(t *testing.T) {
 	wants(t, b.String(), `internal/store/index.go:8:2  place-not-allowed  place=leading kind=line
   // 前方移行はここで行っていた。
 
-1 件の違反（1 ファイル / 1 コメント）
+1 violations (1 files / 1 comments)
 `)
 }
 
@@ -256,7 +256,7 @@ func TestWarnings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wants(t, b.String(), `esorp: 2 ファイルを検査していません（その言語のスキャナがまだありません）:
+	wants(t, b.String(), `esorp: 2 files were not inspected (no scanner for that language yet):
   a.rb
   b.py
 `)
