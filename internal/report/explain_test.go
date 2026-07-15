@@ -75,10 +75,10 @@ func TestExplainVessel(t *testing.T) {
   // 前方移行はここで行っていた。
   この位置のコメントは許可されていません。
 
-  決めているのは esorp.yaml の syntax.cstyle.allow です:
+  Decided by esorp.yaml at syntax.cstyle.allow:
     allow[0]  place: header
-    allow[1]  place: doc  kind: [docline]  label: [TODO:, SAFETY:]  form: あり
-    place: leading（kind: line）はこの列挙にありません。列挙されなかった器のコメントは、中身が何であれ違反です
+    allow[1]  place: doc  kind: [docline]  label: [TODO:, SAFETY:]  form: present
+    place: leading (kind: line) is not in this enumeration. A comment in a vessel that was not enumerated is a violation, whatever its content
 
 `)
 }
@@ -95,7 +95,7 @@ func TestExplainForm(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(b.String(), `  決めているのは esorp.yaml の syntax.cstyle.allow[1].form.paragraphs です:
+	if !strings.Contains(b.String(), `  Decided by esorp.yaml at syntax.cstyle.allow[1].form.paragraphs:
     paragraphs: 1
 `) {
 		t.Fatalf("書式の根拠が違います:\n%s", b.String())
@@ -114,9 +114,9 @@ func TestExplainLabel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(b.String(), `  決めているのは esorp.yaml の syntax.cstyle.allow[1].label です:
+	if !strings.Contains(b.String(), `  Decided by esorp.yaml at syntax.cstyle.allow[1].label:
     label: [TODO:, SAFETY:]
-    この器のコメントは、このいずれかで始めてください
+    A comment in this vessel must begin with one of these
 `) {
 		t.Fatalf("札の根拠が違います:\n%s", b.String())
 	}
@@ -138,7 +138,7 @@ func TestExplainLexicon(t *testing.T) {
   This match depends on a line-wrap seam. The line wrapped at the boundary between half-width and full-width characters,
   and whether whitespace stood there in the original cannot be recovered. If there is nothing to fix in the original, put it on the baseline.
 
-  決めているのは esorp.yaml の rules[0] です:
+  Decided by esorp.yaml at rules[0]:
     id: no-history
     pattern: 以前は|かつては
     where.syntax: [cstyle]
@@ -157,7 +157,7 @@ func TestExplainBaselined(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(b.String(), "  この違反は baseline が抑えています（check には出ません）。\n") {
+	if !strings.Contains(b.String(), "  This violation is held down by the baseline (it does not appear in check).\n") {
 		t.Fatalf("baseline の断りが落ちています:\n%s", b.String())
 	}
 }

@@ -25,11 +25,11 @@ func Explain(w io.Writer, cfg *config.Config, configPath string, res *audit.Resu
 			indent(&b, SeamNote)
 		}
 		if base.Has(f.Key) {
-			indent(&b, "この違反は baseline が抑えています（check には出ません）。")
+			indent(&b, "This violation is held down by the baseline (it does not appear in check).")
 		}
 
 		b.WriteByte('\n')
-		fmt.Fprintf(&b, "  決めているのは %s の %s です:\n", configPath, f.Site.Path)
+		fmt.Fprintf(&b, "  Decided by %s at %s:\n", configPath, f.Site.Path)
 		for _, line := range site(cfg, f) {
 			b.WriteString("    ")
 			b.WriteString(line)
@@ -56,12 +56,12 @@ func site(cfg *config.Config, f audit.Finding) []string {
 		for i, a := range allows {
 			out = append(out, fmt.Sprintf("allow[%d]  %s", i, vessel(a)))
 		}
-		return append(out, fmt.Sprintf("place: %s（kind: %s）はこの列挙にありません。列挙されなかった器のコメントは、中身が何であれ違反です", f.Place, f.Kind))
+		return append(out, fmt.Sprintf("place: %s (kind: %s) is not in this enumeration. A comment in a vessel that was not enumerated is a violation, whatever its content", f.Place, f.Kind))
 
 	case f.ID == rule.LabelRequired:
 		return []string{
 			"label: [" + strings.Join(allows[f.Site.Allow].Label, ", ") + "]",
-			"この器のコメントは、このいずれかで始めてください",
+			"A comment in this vessel must begin with one of these",
 		}
 
 	default:
@@ -80,7 +80,7 @@ func vessel(a config.Allow) string {
 		fmt.Fprintf(&b, "  label: [%s]", strings.Join(a.Label, ", "))
 	}
 	if a.Form != nil {
-		b.WriteString("  form: あり")
+		b.WriteString("  form: present")
 	}
 	return b.String()
 }

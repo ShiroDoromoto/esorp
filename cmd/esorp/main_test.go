@@ -459,10 +459,10 @@ func TestExplain(t *testing.T) {
 			want: []string{
 				"a.go:6:2  place-not-allowed  place=leading kind=line",
 				"この位置のコメントは許可されていません。",
-				"の syntax.cstyle.allow です:",
+				"at syntax.cstyle.allow:",
 				"allow[0]  place: header",
 				"allow[2]  place: trailing  label: [TODO:]",
-				"place: leading（kind: line）はこの列挙にありません",
+				"place: leading (kind: line) is not in this enumeration",
 			},
 		},
 		{
@@ -470,7 +470,7 @@ func TestExplain(t *testing.T) {
 			target: "a.go:8",
 			want: []string{
 				"a.go:8:6  label-required",
-				"の syntax.cstyle.allow[2].label です:",
+				"at syntax.cstyle.allow[2].label:",
 				"label: [TODO:]",
 			},
 		},
@@ -515,7 +515,7 @@ disposition:
 	}
 	for _, want := range []string{
 		"a.go:3:1  form-paragraphs  place=doc kind=line",
-		"の syntax.cstyle.allow[1].form.paragraphs です:",
+		"at syntax.cstyle.allow[1].form.paragraphs:",
 		"paragraphs: 1",
 	} {
 		if !strings.Contains(stdout.String(), want) {
@@ -552,7 +552,7 @@ rules:
 	for _, want := range []string{
 		"a.go:3:1  no-history  place=doc kind=line",
 		"変化を語っています。",
-		"の rules[0] です:",
+		"at rules[0]:",
 		"pattern: かつて|従来",
 		"where.syntax: [cstyle]",
 	} {
@@ -574,7 +574,7 @@ func TestExplainBaselined(t *testing.T) {
 	if got := run([]string{"explain", "--config", cfgPath, "a.go:6"}, &stdout, io.Discard); got != exitViolated {
 		t.Fatalf("run(explain) = %d, want %d\n%s", got, exitViolated, stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "baseline が抑えています") {
+	if !strings.Contains(stdout.String(), "held down by the baseline") {
 		t.Errorf("baseline が抑えていることを告げていない:\n%s", stdout.String())
 	}
 }
