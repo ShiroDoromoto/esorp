@@ -135,7 +135,6 @@ printf 'この関数はかつて同期だった。\n' | esorp check --text -
 
 1 violations
 Only layer 2 (lexicon) applied. Layer 1 (vessel and form) does not apply (the body passed in has no vessel).
-There is no baseline (a one-off input has no key for a suppression to stand on).
 ```
 
 当たるのは層2（語彙）だけです。素のテキストは器を持たないので、**層1（器・書式）は当たりません**。
