@@ -89,8 +89,8 @@ func TestRunExitCodes(t *testing.T) {
 	}
 }
 
-// TestCheckSeverityExitCode は、check の終了コードを enforce の違反だけが動かすことを確かめる
-// （D-273）。testSource は place-not-allowed 2件と label-required 1件に反する。
+// TestCheckSeverityExitCode は、check の終了コードを enforce の違反だけが動かすことを確かめる。
+// testSource は place-not-allowed 2件と label-required 1件に反する。
 func TestCheckSeverityExitCode(t *testing.T) {
 	tests := []struct {
 		name     string

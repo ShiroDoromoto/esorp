@@ -77,7 +77,7 @@ func (r *Result) Entries() []baseline.Entry {
 }
 
 // Enforced は、この走査に残った enforce の違反の数。check の終了コードはこれで決まり、advisory の
-// 違反は Findings に残ったまま数から外れる——報告には出るが、CI は落とさない（D-273）。
+// 違反は Findings に残ったまま数から外れる——報告には出るが、CI は落とさない。
 func (r *Result) Enforced() int {
 	n := 0
 	for _, f := range r.Findings {
@@ -355,7 +355,7 @@ func stamp(vs []rule.Violation, sev map[string]string) []rule.Violation {
 }
 
 // Enforced は、CI を落とす違反——強度が enforce のもの——の数を数える。advisory は報告に出るが、
-// この数には入らない（D-273）。
+// この数には入らない。
 func Enforced(vs []rule.Violation) int {
 	n := 0
 	for _, v := range vs {

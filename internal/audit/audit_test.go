@@ -254,7 +254,7 @@ func TestRunLexiconWherePath(t *testing.T) {
 
 // TestRunSeverity は、層1・層2 のどちらの違反にも設定の強度が載り、severity: に書かれていない id は
 // enforce になることを確かめる。advisory にした違反は Findings に残る（報告には出る）が、Enforced
-// には数えない——CI の赤/緑を決めるのはこの数（D-273）。
+// には数えない——CI の赤/緑を決めるのはこの数。
 func TestRunSeverity(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "esorp.yaml", "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\n    allow:\n      - place: doc\n"+
