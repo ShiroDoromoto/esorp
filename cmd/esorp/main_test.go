@@ -912,7 +912,7 @@ func F() {
 	}
 
 	if got.Version != 3 {
-		t.Errorf("version = %d, want 3（severity を足し、baselined を落とした形）", got.Version)
+		t.Errorf("version = %d, want 3", got.Version)
 	}
 	if got.Review == nil {
 		t.Fatalf("review が出ていない:\n%s", stdout.String())
