@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -179,6 +180,36 @@ rules:
 	}
 }
 
+// TestLoadSeverity は、severity: が層1 の違反 id と rules[].id を分け隔てなく1枚で引けること
+// （鍵の空間は1つ）と、書かれていない id が読まれないままでいることを見る。
+func TestLoadSeverity(t *testing.T) {
+	cfg, err := load(t, `
+syntax:
+  cstyle:
+    files: ["**/*.go"]
+    mode: structural
+rules:
+  - id: no-history
+    pattern: "かつて"
+    message: "変化を語っています"
+severity:
+  form-paragraphs: advisory
+  no-history: advisory
+  place-not-allowed: enforce
+`)
+	if err != nil {
+		t.Fatalf("読めない: %v", err)
+	}
+	want := map[string]string{
+		"form-paragraphs":   SeverityAdvisory,
+		"no-history":        SeverityAdvisory,
+		"place-not-allowed": SeverityEnforce,
+	}
+	if !maps.Equal(cfg.Severity, want) {
+		t.Errorf("severity = %v, want %v", cfg.Severity, want)
+	}
+}
+
 func TestLoadErrors(t *testing.T) {
 	tests := []struct {
 		name string
@@ -281,6 +312,21 @@ func TestLoadErrors(t *testing.T) {
 			name: "disposition の違反 id が不明",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\ndisposition:\n  place-not-allowd: x\n",
 			want: "不明な違反 id",
+		},
+		{
+			name: "severity の違反 id が不明",
+			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nseverity:\n  place-not-allowd: advisory\n",
+			want: "不明な違反 id",
+		},
+		{
+			name: "severity の値が enforce / advisory ではない",
+			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nseverity:\n  form-refs: warn\n",
+			want: "不明な強度",
+		},
+		{
+			name: "severity は off を持たない",
+			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nseverity:\n  form-refs: off\n",
+			want: "不明な強度",
 		},
 		{
 			name: "syntax が空",
