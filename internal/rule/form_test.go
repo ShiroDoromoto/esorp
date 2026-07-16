@@ -14,7 +14,6 @@ var formDisposition = map[string]string{
 	FormSubject:    "宣言の名前で始めてください。",
 	FormHeadings:   "doc コメントに見出しは書けません。",
 	FormParagraphs: "doc コメントの段落は1つです。",
-	FormRefs:       "追跡番号への参照です。",
 	FormMaxLines:   "長すぎます。",
 	FormURLs:       "URL は書けません。",
 }
@@ -22,7 +21,7 @@ var formDisposition = map[string]string{
 // templateForm は、テンプレートの既定と同じ書式（Go の doc）。
 func templateForm() *config.Form {
 	one := 1
-	return &config.Form{Subject: "required", Headings: "deny", Paragraphs: &one, Refs: "deny"}
+	return &config.Form{Subject: "required", Headings: "deny", Paragraphs: &one}
 }
 
 // form は、Go のソース断片の doc コメントを検査して、書式の違反 id を返す。
@@ -85,16 +84,6 @@ func TestForm(t *testing.T) {
 			want: []string{"form-headings 3"},
 		},
 		{
-			name: "追跡番号 #123 は form-refs",
-			src:  "package p\n\n// Open はストアを開く（#123 で変更）。\nfunc Open() error { return nil }\n",
-			want: []string{"form-refs 3"},
-		},
-		{
-			name: "追跡番号 ABC-123 も form-refs",
-			src:  "package p\n\n// Open はストアを開く。ABC-123 を参照。\nfunc Open() error { return nil }\n",
-			want: []string{"form-refs 3"},
-		},
-		{
 			name: "付け足された背景の段落は form-paragraphs",
 			src: "package p\n\n" +
 				"// Open はストアを開く。\n" +
@@ -110,7 +99,7 @@ func TestForm(t *testing.T) {
 				"//\n" +
 				"// #42 で入った。\n" +
 				"func Open() error { return nil }\n",
-			want: []string{"form-subject 3", "form-headings 3", "form-paragraphs 3", "form-refs 3"},
+			want: []string{"form-subject 3", "form-headings 3", "form-paragraphs 3"},
 		},
 		{
 			name: "宣言名を取り出せない doc は subject を検査しない（誤検知を出さない）",

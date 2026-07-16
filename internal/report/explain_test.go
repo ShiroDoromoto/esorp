@@ -282,7 +282,6 @@ func TestExplainFormKeys(t *testing.T) {
 			Subject:    "declaration",
 			Headings:   "deny",
 			Paragraphs: &paragraphs,
-			Refs:       "deny",
 			MaxLines:   &maxLines,
 			URLs:       "allow",
 		},
@@ -297,7 +296,6 @@ func TestExplainFormKeys(t *testing.T) {
 		{rule.FormSubject, "subject: declaration", "subject", "declaration"},
 		{rule.FormHeadings, "headings: deny", "headings", "deny"},
 		{rule.FormParagraphs, "paragraphs: 2", "paragraphs", float64(2)},
-		{rule.FormRefs, "refs: deny", "refs", "deny"},
 		{rule.FormMaxLines, "max_lines: 10", "max_lines", float64(10)},
 		{rule.FormURLs, "urls: allow", "urls", "allow"},
 	} {

@@ -103,8 +103,6 @@ func formKey(f *config.Form, id string) (string, any) {
 		return "headings", f.Headings
 	case rule.FormParagraphs:
 		return "paragraphs", *f.Paragraphs
-	case rule.FormRefs:
-		return "refs", f.Refs
 	case rule.FormMaxLines:
 		return "max_lines", *f.MaxLines
 	case rule.FormURLs:
@@ -162,7 +160,6 @@ type jsonForm struct {
 	Subject    string `json:"subject,omitempty"`
 	Headings   string `json:"headings,omitempty"`
 	Paragraphs *int   `json:"paragraphs,omitempty"`
-	Refs       string `json:"refs,omitempty"`
 	MaxLines   *int   `json:"max_lines,omitempty"`
 	URLs       string `json:"urls,omitempty"`
 }
@@ -268,7 +265,6 @@ func form(f *config.Form) *jsonForm {
 		Subject:    f.Subject,
 		Headings:   f.Headings,
 		Paragraphs: f.Paragraphs,
-		Refs:       f.Refs,
 		MaxLines:   f.MaxLines,
 		URLs:       f.URLs,
 	}

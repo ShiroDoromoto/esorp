@@ -270,7 +270,6 @@ func diffAllow(key, p string, l, t Allow) []Change {
 	}{
 		{name: "subject", l: lf.Subject, t: tf.Subject},
 		{name: "headings", l: lf.Headings, t: tf.Headings},
-		{name: "refs", l: lf.Refs, t: tf.Refs},
 		{name: "urls", l: lf.URLs, t: tf.URLs},
 		{name: "paragraphs", l: num(lf.Paragraphs), t: num(tf.Paragraphs)},
 		{name: "max_lines", l: num(lf.MaxLines), t: num(tf.MaxLines)},

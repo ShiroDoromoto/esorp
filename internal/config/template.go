@@ -28,7 +28,6 @@ syntax:
           subject: required         # 1行目が、紐づく宣言の名前で始まること（Go の doc 規約）
           headings: deny            # 見出しを書けない（履歴は見出しを付けて書かれる）
           paragraphs: 1             # 段落は1つ（背景を段落として付け足せない）
-          refs: deny                # #123 形式の追跡番号への参照を書けない
 
       - place: trailing             # 行末。ラベル必須
         label: ["SAFETY:", "TODO:", "nolint:"]
@@ -52,7 +51,6 @@ syntax:
           # subject は Go の doc 規約。Rust には無いので求めない。
           headings: deny
           paragraphs: 1
-          refs: deny
 
       - place: trailing
         label: ["SAFETY:", "TODO:"]
@@ -76,7 +74,6 @@ syntax:
         form:
           headings: deny
           paragraphs: 1
-          refs: deny
 
       - place: trailing
         label: ["TODO:"]
@@ -99,7 +96,6 @@ syntax:
         form:
           headings: deny
           paragraphs: 1
-          refs: deny
 
       - place: trailing
         label: ["TODO:"]
@@ -149,9 +145,6 @@ disposition:
     doc コメントに見出しは書けません。
   form-paragraphs: |
     doc コメントの段落は1つです。付け足された段落は、多くの場合、目の前のコードの説明ではありません。
-  form-refs: |
-    追跡番号への参照です。読み手（将来の参加者・外部の読者・次のエージェント）は追跡システムを
-    辿れません。削除してください。
 
 # git が「自分のコードではない」と宣言しているものを、esorp も自分のコードとして扱わない。
 # gitignore を黙って見にいくのは設定に見えない挙動になるので、方針としてここに書く。

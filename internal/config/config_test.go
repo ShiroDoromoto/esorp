@@ -47,7 +47,7 @@ func TestLoadTemplate(t *testing.T) {
 			t.Errorf("syntax.%s.allow[1].place = %v, want doc", name, got)
 		}
 		f := s.Allow[1].Form
-		if f == nil || f.Paragraphs == nil || *f.Paragraphs != 1 || f.Headings != "deny" || f.Refs != "deny" {
+		if f == nil || f.Paragraphs == nil || *f.Paragraphs != 1 || f.Headings != "deny" {
 			t.Fatalf("syntax.%s.allow[1].form = %#v", name, f)
 		}
 		if f.Subject != wantSubject {
@@ -264,7 +264,7 @@ func TestLoadErrors(t *testing.T) {
 		},
 		{
 			name: "rules の id が層1 の違反 id と衝突",
-			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nrules:\n  - id: form-refs\n    pattern: a\n    message: x\n",
+			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nrules:\n  - id: form-headings\n    pattern: a\n    message: x\n",
 			want: "層1 の違反 id",
 		},
 		{

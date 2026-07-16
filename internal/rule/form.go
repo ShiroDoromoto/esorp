@@ -16,7 +16,6 @@ const (
 	FormSubject    = "form-subject"
 	FormHeadings   = "form-headings"
 	FormParagraphs = "form-paragraphs"
-	FormRefs       = "form-refs"
 	FormMaxLines   = "form-max-lines"
 	FormURLs       = "form-urls"
 )
@@ -24,10 +23,6 @@ const (
 // headingRe は Markdown の見出し（行頭の井桁のあとに空白）に当たる。井桁に数字が続く形は
 // 追跡番号であって見出しではないので、空白を要求して切り分ける。
 var headingRe = regexp.MustCompile(`(?m)^#{1,6}[ \t]`)
-
-// refRe は追跡番号への参照に当たる。井桁に数字が続く形と、大文字の接頭辞にハイフンと数字が
-// 続く形の2つだけを見る。形の判定であって、語彙判定ではない。
-var refRe = regexp.MustCompile(`#\d+|\b[A-Z][A-Z0-9]*-\d+\b`)
 
 var urlRe = regexp.MustCompile(`https?://`)
 
@@ -56,9 +51,6 @@ func Form(c place.Comment, f *config.Form, disp map[string]string, t Target, all
 	}
 	if f.Paragraphs != nil && paragraphs(lines, code) > *f.Paragraphs {
 		add(FormParagraphs, "paragraphs")
-	}
-	if f.Refs == "deny" && refRe.MatchString(body) {
-		add(FormRefs, "refs")
 	}
 	if f.MaxLines != nil && len(lines) > *f.MaxLines {
 		add(FormMaxLines, "max_lines")

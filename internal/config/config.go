@@ -33,7 +33,7 @@ const SyntaxText = "text"
 // knownViolations は、層1 が出す違反 id。disposition のキーはこれでなければならない。
 var knownViolations = []string{
 	"place-not-allowed", "label-required",
-	"form-subject", "form-headings", "form-paragraphs", "form-refs", "form-max-lines", "form-urls",
+	"form-subject", "form-headings", "form-paragraphs", "form-max-lines", "form-urls",
 }
 
 // Config は esorp.yaml の全体。
@@ -139,9 +139,6 @@ type Form struct {
 
 	// Paragraphs は段落数の上限。
 	Paragraphs *int `yaml:"paragraphs"`
-
-	// Refs は、追跡番号への参照を書けるか（deny | allow）。
-	Refs string `yaml:"refs"`
 
 	// MaxLines は行数の上限。
 	MaxLines *int `yaml:"max_lines"`
@@ -432,7 +429,6 @@ func validateAllow(at string, a Allow, add func(string, ...any)) {
 		key, val string
 	}{
 		{"headings", f.Headings},
-		{"refs", f.Refs},
 		{"urls", f.URLs},
 	} {
 		if sw.val != "" && !slices.Contains([]string{"deny", "allow"}, sw.val) {

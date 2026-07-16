@@ -196,7 +196,6 @@ syntax:
           subject: required         # 1行目が、紐づく宣言の名前で始まること
           headings: deny            # 見出しを書けない（履歴は見出しを付けて書かれる）
           paragraphs: 1             # 段落は1つ（背景を段落として付け足せない）
-          refs: deny                # #123 形式の追跡番号への参照を書けない
       - place: trailing             # 行末。ラベル必須
         label: ["SAFETY:", "TODO:"]
     # place: leading / orphan は列挙していない ＝ 許可しない

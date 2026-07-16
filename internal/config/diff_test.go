@@ -58,7 +58,6 @@ syntax:
           subject: required
           headings: deny
           paragraphs: 1
-          refs: deny
       - place: trailing
         label: ["SAFETY:", "TODO:", "nolint:"]
 baseline: .esorp-baseline.json
@@ -139,7 +138,6 @@ syntax:
           subject: required
           headings: deny
           paragraphs: 2
-          refs: deny
       - place: leading
       - place: trailing
         label: ["SAFETY:", "TODO:", "nolint:"]

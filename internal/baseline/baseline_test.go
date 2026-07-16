@@ -71,7 +71,7 @@ func TestSaveLoad(t *testing.T) {
 		t.Fatalf("空のはず: %d", b.Len())
 	}
 
-	e := entry("a.go", "form-refs", "#42 で入った。", 0)
+	e := entry("a.go", "form-headings", "# 背景", 0)
 	if err := Save(path, []Entry{e}); err != nil {
 		t.Fatal(err)
 	}
