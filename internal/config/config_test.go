@@ -67,9 +67,6 @@ func TestLoadTemplate(t *testing.T) {
 		}
 	}
 
-	if cfg.Baseline != ".esorp-baseline.json" {
-		t.Errorf("baseline = %q", cfg.Baseline)
-	}
 	if !cfg.RespectGitignore {
 		t.Error("respect_gitignore = false, want true")
 	}

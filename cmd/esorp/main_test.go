@@ -112,7 +112,7 @@ func TestCheckSeverityExitCode(t *testing.T) {
 }
 
 // TestCheckAdvisoryStillReported は、advisory の違反が報告から消えないことを確かめる。強度が変えるのは
-// 終了コードだけで、黙らせる（消す）のは baseline の仕事——advisory は「見えるが落とさない」。
+// 終了コードだけで、黙らせる（消す）のは器の列挙（allow）と where の仕事——advisory は「見えるが落とさない」。
 func TestCheckAdvisoryStillReported(t *testing.T) {
 	cfgPath := tree(t, testConfig+"severity:\n  place-not-allowed: advisory\n  label-required: advisory\n", testSource)
 
@@ -197,7 +197,7 @@ func TestCheckJSONOutput(t *testing.T) {
 		t.Fatalf("JSON として読めない: %v\n%s", err, stdout.String())
 	}
 
-	if got.Version != 3 || got.Summary.Files != 1 || got.Summary.Violations != 3 {
+	if got.Version != 4 || got.Summary.Files != 1 || got.Summary.Violations != 3 {
 		t.Errorf("summary が違う: version=%d %+v", got.Version, got.Summary)
 	}
 	if got.Summary.Enforce != 3 || got.Summary.Advisory != 0 {
@@ -208,45 +208,6 @@ func TestCheckJSONOutput(t *testing.T) {
 	}
 	if v := got.Violations[0]; v.Path != "a.go" || v.Line != 6 || v.ID != "place-not-allowed" || v.Place != "leading" || v.Severity != "enforce" {
 		t.Errorf("1件目が違う: %+v", v)
-	}
-}
-
-// TestBaselineUpdateThenCheck は、baseline に載せた違反が check から消えて CI が緑になり、載せた
-// コメントの本文を撫でるとキーが変わって違反として戻ってくることを確かめる（触ったなら、あなたが
-// そのコメントの持ち主になる）。--allow-new を付けなければ、新しい違反は1件も載らない（ラチェット）。
-func TestBaselineUpdateThenCheck(t *testing.T) {
-	cfgPath := tree(t, testConfig+"baseline: .esorp-baseline.json\n", testSource)
-	src := filepath.Join(filepath.Dir(cfgPath), "a.go")
-
-	if got := run([]string{"check", "--config", cfgPath}, io.Discard, io.Discard); got != exitViolated {
-		t.Fatalf("baseline に載せる前は違反あり: %d", got)
-	}
-
-	if got := run([]string{"baseline", "update", "--config", cfgPath}, io.Discard, io.Discard); got != exitOK {
-		t.Fatalf("baseline update = %d", got)
-	}
-	if got := run([]string{"check", "--config", cfgPath}, io.Discard, io.Discard); got != exitViolated {
-		t.Fatalf("--allow-new 無しで新しい違反が載ってしまっている: %d", got)
-	}
-
-	if got := run([]string{"baseline", "update", "--allow-new", "--config", cfgPath}, io.Discard, io.Discard); got != exitOK {
-		t.Fatalf("baseline update --allow-new = %d", got)
-	}
-
-	var stdout strings.Builder
-	if got := run([]string{"check", "--config", cfgPath}, &stdout, io.Discard); got != exitOK {
-		t.Fatalf("baseline に載せた後は適合のはず: %d\n%s", got, stdout.String())
-	}
-	if !strings.Contains(stdout.String(), "baseline holds down 3") {
-		t.Errorf("抑えた件数を告げていない: %q", stdout.String())
-	}
-
-	touched := strings.Replace(testSource, "// 文の直前（leading）。", "// 文の直前（leading）。少し足す。", 1)
-	if err := os.WriteFile(src, []byte(touched), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if got := run([]string{"check", "--config", cfgPath}, io.Discard, io.Discard); got != exitViolated {
-		t.Fatal("baseline に載せたコメントを編集したのに、違反として戻ってきていない")
 	}
 }
 
@@ -455,7 +416,7 @@ func TestInitWritesUsableConfig(t *testing.T) {
 }
 
 // TestInitGuidesBothFirstDayMoves は、init の出力が導入初日の営みを両方案内することを確かめる。
-// 既存の違反を baseline に載せる（決定論の側）だけでは片手落ちで、層1・層2 を通り抜けた既存の
+// 既存の違反を差分の外に置く（決定論の側）だけでは片手落ちで、層1・層2 を通り抜けた既存の
 // コメントを層3 に回す口（esorp review）に触れなければ、そこへ辿り着く導線が生成直後に無い。
 func TestInitGuidesBothFirstDayMoves(t *testing.T) {
 	dir := t.TempDir()
@@ -465,7 +426,7 @@ func TestInitGuidesBothFirstDayMoves(t *testing.T) {
 	if got := run([]string{"init", "--config", cfgPath}, &stdout, &stderr); got != exitOK {
 		t.Fatalf("run(init) = %d, want %d\n%s", got, exitOK, stderr.String())
 	}
-	for _, want := range []string{"esorp baseline update --allow-new", "esorp review"} {
+	for _, want := range []string{"esorp check --diff", "esorp review"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("導線に %q が無い: %q", want, stdout.String())
 		}
@@ -620,23 +581,6 @@ rules:
 	}
 }
 
-// TestExplainBaselined は、baseline が抑えている違反も、問われたなら説明することを確かめる
-// （抑えていることは併せて告げる）。
-func TestExplainBaselined(t *testing.T) {
-	cfgPath := tree(t, testConfig+"baseline: .esorp-baseline.json\n", testSource)
-	if got := run([]string{"baseline", "update", "--allow-new", "--config", cfgPath}, io.Discard, io.Discard); got != exitOK {
-		t.Fatalf("baseline update = %d", got)
-	}
-
-	var stdout strings.Builder
-	if got := run([]string{"explain", "--config", cfgPath, "a.go:6"}, &stdout, io.Discard); got != exitViolated {
-		t.Fatalf("run(explain) = %d, want %d\n%s", got, exitViolated, stdout.String())
-	}
-	if !strings.Contains(stdout.String(), "held down by the baseline") {
-		t.Errorf("baseline が抑えていることを告げていない:\n%s", stdout.String())
-	}
-}
-
 // TestExplainNoViolation は、違反の無いコメントと、コメントの無い行を書き分けることを確かめる
 // （どちらも適合だが、指し損なったのかどうかは読み手に分かる必要がある）。
 func TestExplainNoViolation(t *testing.T) {
@@ -701,13 +645,12 @@ func TestExplainBadTarget(t *testing.T) {
 // explanation は explain --format json の1件。site は違反 id と一対一なので、立っている枝で
 // どこが決めたのかが分かる。
 type explanation struct {
-	Path      string `json:"path"`
-	Line      int    `json:"line"`
-	ID        string `json:"id"`
-	Place     string `json:"place"`
-	Message   string `json:"message"`
-	Baselined bool   `json:"baselined"`
-	Site      struct {
+	Path    string `json:"path"`
+	Line    int    `json:"line"`
+	ID      string `json:"id"`
+	Place   string `json:"place"`
+	Message string `json:"message"`
+	Site    struct {
 		Path   string `json:"path"`
 		Syntax string `json:"syntax"`
 		Allow  []struct {
@@ -772,7 +715,7 @@ func TestExplainJSON(t *testing.T) {
 	}
 
 	e := out.Explanations[0]
-	if e.Path != "a.go" || e.Line != 6 || e.ID != "place-not-allowed" || e.Place != "leading" || e.Baselined {
+	if e.Path != "a.go" || e.Line != 6 || e.ID != "place-not-allowed" || e.Place != "leading" {
 		t.Errorf("違反が違う: %+v", e)
 	}
 	if e.Message != "この位置のコメントは許可されていません。" {
@@ -855,17 +798,12 @@ rules:
 }
 
 // TestExplainJSONStatus は、違反・適合・コメント無しを status で書き分けることを確かめる（空の
-// explanations では、指し損なったのかどうかが読み手に分からない）。baseline が抑えている違反も、
-// 問われたなら説明する。
+// explanations では、指し損なったのかどうかが読み手に分からない）。
 func TestExplainJSONStatus(t *testing.T) {
-	cfgPath := tree(t, testConfig+"baseline: .esorp-baseline.json\n", testSource)
-	if got := run([]string{"baseline", "update", "--allow-new", "--config", cfgPath}, io.Discard, io.Discard); got != exitOK {
-		t.Fatalf("baseline update = %d", got)
-	}
+	cfgPath := tree(t, testConfig, testSource)
 
-	out := explainJSONOf(t, cfgPath, "a.go:6", exitViolated)
-	if out.Status != "violated" || len(out.Explanations) != 1 || !out.Explanations[0].Baselined {
-		t.Errorf("baseline が抑えていることを告げていない: %+v", out)
+	if out := explainJSONOf(t, cfgPath, "a.go:6", exitViolated); out.Status != "violated" || len(out.Explanations) != 1 {
+		t.Errorf("違反した行の status が違う: %+v", out)
 	}
 
 	if s := explainJSONOf(t, cfgPath, "a.go:4", exitOK); s.Status != "conforming" || len(s.Explanations) != 0 {
@@ -973,8 +911,8 @@ func F() {
 		t.Fatalf("JSON として読めない: %v\n%s", err, stdout.String())
 	}
 
-	if got.Version != 3 {
-		t.Errorf("version = %d, want 3（severity を足した形）", got.Version)
+	if got.Version != 4 {
+		t.Errorf("version = %d, want 4（baselined の欄を持たない形）", got.Version)
 	}
 	if got.Review == nil {
 		t.Fatalf("review が出ていない:\n%s", stdout.String())

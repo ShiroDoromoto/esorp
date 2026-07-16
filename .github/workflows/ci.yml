@@ -25,7 +25,7 @@ jobs:
       - name: go test
         run: make test
 
-      # esorp を esorp 自身に当てる。baseline を効かせた状態で緑を保つ（新しい違反は増やさない）。
+      # esorp を esorp 自身に当てる。ツリー全体を緑に保つ（抑制は持たない）。
       - name: esorp check（ドッグフーディング）
         run: make dogfood
 

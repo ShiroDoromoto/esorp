@@ -36,7 +36,6 @@ func TestBodyText(t *testing.T) {
 
 1 violations
 Only layer 2 (lexicon) applied. Layer 1 (vessel and form) does not apply (the body passed in has no vessel).
-There is no baseline (a one-off input has no key for a suppression to stand on).
 `)
 }
 
@@ -50,7 +49,6 @@ func TestBodyTextClean(t *testing.T) {
 
 	wants(t, b.String(), `esorp: no violations
 Only layer 2 (lexicon) applied. Layer 1 (vessel and form) does not apply (the body passed in has no vessel).
-There is no baseline (a one-off input has no key for a suppression to stand on).
 `)
 }
 
@@ -61,7 +59,7 @@ func TestBodyJSON(t *testing.T) {
 	}
 
 	wants(t, b.String(), `{
-  "version": 2,
+  "version": 3,
   "surface": "text",
   "layers": {
     "applied": [
@@ -72,7 +70,6 @@ func TestBodyJSON(t *testing.T) {
       "form"
     ]
   },
-  "baseline": false,
   "summary": {
     "violations": 1,
     "enforce": 1,
@@ -125,7 +122,7 @@ func TestBodyJSONEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, want := range []string{`"violations": []`, `"not_applied"`, `"baseline": false`} {
+	for _, want := range []string{`"violations": []`, `"not_applied"`} {
 		if !strings.Contains(b.String(), want) {
 			t.Errorf("出力に %q が現れない:\n%s", want, b.String())
 		}

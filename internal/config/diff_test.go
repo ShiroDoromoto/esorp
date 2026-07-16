@@ -60,7 +60,6 @@ syntax:
           paragraphs: 1
       - place: trailing
         label: ["SAFETY:", "TODO:", "nolint:"]
-baseline: .esorp-baseline.json
 `)
 
 	if !strings.Contains(got, "paired with cstyle-rust in the template") {
@@ -90,7 +89,6 @@ syntax:
     mode: structural
     allow:
       - place: header
-baseline: .esorp-baseline.json
 `)
 
 	if n := strings.Count(got, "the files being looked at"); n != 1 {
@@ -112,7 +110,6 @@ syntax:
     mode: structural
     allow:
       - place: header
-baseline: .esorp-baseline.json
 `)
 
 	if !strings.Contains(got, "syntax entries only in the template") {
@@ -173,7 +170,6 @@ rules:
     pattern: "とりま"
     message: |
       書き言葉で書いてください。
-baseline: .esorp-baseline.json
 `)
 
 	for _, want := range []string{

@@ -21,7 +21,7 @@ import (
 //	  この位置のコメントは許可されていません。
 func Text(w io.Writer, res *audit.Result) error {
 	if len(res.Findings) == 0 {
-		_, err := fmt.Fprintf(w, "esorp: no violations (%d files / %d comments%s)\n", res.Files, res.Comments, baselined(res))
+		_, err := fmt.Fprintf(w, "esorp: no violations (%d files / %d comments)\n", res.Files, res.Comments)
 		return err
 	}
 
@@ -35,8 +35,8 @@ func Text(w io.Writer, res *audit.Result) error {
 		}
 		b.WriteByte('\n')
 	}
-	fmt.Fprintf(&b, "%d violations%s (%d files / %d comments%s)\n",
-		len(res.Findings), breakdown(res.Enforced(), len(res.Findings)), res.Files, res.Comments, baselined(res))
+	fmt.Fprintf(&b, "%d violations%s (%d files / %d comments)\n",
+		len(res.Findings), breakdown(res.Enforced(), len(res.Findings)), res.Files, res.Comments)
 
 	_, err := io.WriteString(w, b.String())
 	return err
@@ -66,15 +66,8 @@ func breakdown(enforce, total int) string {
 // 折り返しが作ったものかもしれない——原文には直す箇所が無いかもしれない。黙って誤爆させないために、
 // 検知したうえで、そう告げる。
 const SeamNote = `This match depends on a line-wrap seam. The line wrapped at the boundary between half-width and full-width characters,
-and whether whitespace stood there in the original cannot be recovered. If there is nothing to fix in the original, put it on the baseline.`
-
-// baselined は、baseline で抑えた件数を添える。抑えているものがあることを、必ず見える所に出す。
-func baselined(res *audit.Result) string {
-	if res.Baselined == 0 {
-		return ""
-	}
-	return fmt.Sprintf(" / baseline holds down %d", res.Baselined)
-}
+and whether whitespace stood there in the original cannot be recovered. If there is nothing to fix in the original, narrow the rule
+with where.path, or put its id on severity: advisory.`
 
 // indent は、複数行の塊を2つ空けて字下げする。空文字列は何も書かない（disposition は省略できる）。
 func indent(b *strings.Builder, s string) {
@@ -123,7 +116,6 @@ type jsonSummary struct {
 	Violations int `json:"violations"`
 	Enforce    int `json:"enforce"`
 	Advisory   int `json:"advisory"`
-	Baselined  int `json:"baselined"`
 }
 
 // jsonViolation の severity は、この違反が走行を落とすか（enforce）、報告に出るだけか（advisory）。
@@ -147,14 +139,13 @@ type jsonViolation struct {
 // JSON は、機械可読の出力を書く。violations と skipped は、空でも null でなく空配列にする。
 func JSON(w io.Writer, res *audit.Result) error {
 	out := jsonReport{
-		Version: 3,
+		Version: 4,
 		Summary: jsonSummary{
 			Files:      res.Files,
 			Comments:   res.Comments,
 			Violations: len(res.Findings),
 			Enforce:    res.Enforced(),
 			Advisory:   len(res.Findings) - res.Enforced(),
-			Baselined:  res.Baselined,
 		},
 		Violations: make([]jsonViolation, 0, len(res.Findings)),
 		Skipped:    res.Skipped,

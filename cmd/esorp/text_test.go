@@ -99,8 +99,7 @@ func TestCheckTextJSON(t *testing.T) {
 			Applied    []string `json:"applied"`
 			NotApplied []string `json:"not_applied"`
 		} `json:"layers"`
-		Baseline bool `json:"baseline"`
-		Summary  struct {
+		Summary struct {
 			Violations int `json:"violations"`
 		} `json:"summary"`
 		Violations []struct {
@@ -122,8 +121,8 @@ func TestCheckTextJSON(t *testing.T) {
 	if strings.Contains(out, `"path"`) {
 		t.Errorf("パスを持たない入力なのに、欄がある:\n%s", out)
 	}
-	if got.Surface != "text" || got.Baseline {
-		t.Errorf("surface = %q / baseline = %v, want text / false", got.Surface, got.Baseline)
+	if got.Surface != "text" {
+		t.Errorf("surface = %q, want text", got.Surface)
 	}
 	if len(got.Layers.NotApplied) != 2 {
 		t.Errorf("当たらない層を告げていない: %v", got.Layers)
@@ -131,13 +130,13 @@ func TestCheckTextJSON(t *testing.T) {
 }
 
 // TestCheckTextSaysWhatDoesNotApply は、適合したときも、当たらない層を告げることを見る。黙って通すと、
-// 通ったことが「層1 も通った」「baseline で抑えられる」と読まれる。
+// 通ったことが「層1 も通った」と読まれる。
 func TestCheckTextSaysWhatDoesNotApply(t *testing.T) {
 	code, out := checkText(t, tree(t, textConfig, ""), "認証のトークンを検証する")
 	if code != exitOK {
 		t.Fatalf("code = %d, want %d", code, exitOK)
 	}
-	for _, want := range []string{"Layer 1 (vessel and form) does not apply", "There is no baseline"} {
+	for _, want := range []string{"Layer 1 (vessel and form) does not apply"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("出力に %q が現れない:\n%s", want, out)
 		}

@@ -10,7 +10,7 @@ import (
 // コメント・doc 記法の記号と、継ぎ行に添えられる「*」（それを添える流儀 spec.BlockStars のときだけ。
 // <!-- --> で剥がすと箇条書きの「*」が消える）、そして前後の空白と、
 // 記号だけになって残る前後の行（中の空行は段落の区切りなので残す）。本文そのものには手を触れない。
-// ラベルの判定（rule）と baseline のキー計算（baseline）が、これを共通の入口にする。
+// ラベルの判定（rule）と語彙の照合が、これを共通の入口にする。
 func Body(text string, spec LangSpec) string {
 	openers := commentOpeners(spec)
 
@@ -121,8 +121,7 @@ func (f Folded) Readings() []string {
 // 散文ではないので、つないでも意味のある文にはならず、ルールがコードの行をまたいで当たるだけになる。
 // 半角と全角の境目の継ぎ目だけは、空白を挟むかが賭けになる（「`--diff`」「を見る」は原文に空白が
 // 無く、「script は」「Common」には在る）。畳んだ本文は挟んだ側に倒したうえで、その位置を Uncertain
-// に残し、挟まない読みも取れるようにする。呼ぶのは照合の直前だけで、baseline のキーが見る本文は
-// Body のままなので、既存のキーは動かない。
+// に残し、挟まない読みも取れるようにする。呼ぶのは照合の直前だけ。
 func Unwrap(lines []string, spec LangSpec) Folded {
 	code := CodeLines(lines, spec)
 

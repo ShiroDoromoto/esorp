@@ -9,8 +9,8 @@
 #         - id: esorp-commit-msg
 #           stages: [commit-msg]
 #
-# 見るのは HEAD から作業ツリーまでに増えた行に重なるコメントだけ。既にあった違反は素通しする
-# （それは baseline の仕事）。コミットのたびにツリー全体を見たいなら args: [check] で上書きする。
+# 見るのは HEAD から作業ツリーまでに増えた行に重なるコメントだけ。既にあった違反は差分の外なので
+# 素通しする。コミットのたびにツリー全体を見たいなら args: [check] で上書きする。
 - id: esorp
   name: esorp
   description: コメントの置き場所と書式を監査する

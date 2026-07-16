@@ -17,7 +17,6 @@ func vessel1() audit.Finding {
 	return audit.Finding{
 		Path:   "internal/store/index.go",
 		Syntax: "cstyle",
-		Key:    "k1",
 		Violation: rule.Violation{
 			ID:       rule.PlaceNotAllowed,
 			Line:     8,
@@ -37,7 +36,6 @@ func lexicon1() audit.Finding {
 	return audit.Finding{
 		Path:   "internal/store/index.go",
 		Syntax: "cstyle",
-		Key:    "k2",
 		Violation: rule.Violation{
 			ID:            "no-history",
 			Line:          20,
@@ -80,24 +78,13 @@ func TestTextNoFindings(t *testing.T) {
 	wants(t, b.String(), "esorp: no violations (3 files / 12 comments)\n")
 }
 
-// TestTextNoFindingsWithBaseline は、抑えた件数が、違反が無いときにも見える所に出ることを見る。
-func TestTextNoFindingsWithBaseline(t *testing.T) {
-	var b strings.Builder
-	if err := Text(&b, &audit.Result{Files: 3, Comments: 12, Baselined: 2}); err != nil {
-		t.Fatal(err)
-	}
-
-	wants(t, b.String(), "esorp: no violations (3 files / 12 comments / baseline holds down 2)\n")
-}
-
 // TestText は、1件が「どこで・何に反し・何が書かれていて・どう始末するか」で閉じていること、
 // 継ぎ目に左右される当たりにだけ断りが添うことを見る。
 func TestText(t *testing.T) {
 	res := &audit.Result{
-		Files:     3,
-		Comments:  12,
-		Findings:  []audit.Finding{vessel1(), lexicon1()},
-		Baselined: 1,
+		Files:    3,
+		Comments: 12,
+		Findings: []audit.Finding{vessel1(), lexicon1()},
 	}
 
 	var b strings.Builder
@@ -113,9 +100,10 @@ internal/store/index.go:20:1  no-history  place=doc kind=docline
   // 以前はここで畳んでいた。
   履歴を書かないでください。
   This match depends on a line-wrap seam. The line wrapped at the boundary between half-width and full-width characters,
-  and whether whitespace stood there in the original cannot be recovered. If there is nothing to fix in the original, put it on the baseline.
+  and whether whitespace stood there in the original cannot be recovered. If there is nothing to fix in the original, narrow the rule
+  with where.path, or put its id on severity: advisory.
 
-2 violations (3 files / 12 comments / baseline holds down 1)
+2 violations (3 files / 12 comments)
 `)
 }
 
@@ -162,11 +150,10 @@ func TestTextWithoutMessage(t *testing.T) {
 // seam_dependent は立ったときだけ出る。
 func TestJSON(t *testing.T) {
 	res := &audit.Result{
-		Files:     3,
-		Comments:  12,
-		Findings:  []audit.Finding{vessel1(), lexicon1()},
-		Baselined: 1,
-		Skipped:   []string{"internal/store/index.rb"},
+		Files:    3,
+		Comments: 12,
+		Findings: []audit.Finding{vessel1(), lexicon1()},
+		Skipped:  []string{"internal/store/index.rb"},
 	}
 
 	var b strings.Builder
@@ -175,14 +162,13 @@ func TestJSON(t *testing.T) {
 	}
 
 	wants(t, b.String(), `{
-  "version": 3,
+  "version": 4,
   "summary": {
     "files": 3,
     "comments": 12,
     "violations": 2,
     "enforce": 2,
-    "advisory": 0,
-    "baselined": 1
+    "advisory": 0
   },
   "violations": [
     {

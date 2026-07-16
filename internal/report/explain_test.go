@@ -1,12 +1,10 @@
 package report
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/ShiroDoromoto/esorp/internal/audit"
-	"github.com/ShiroDoromoto/esorp/internal/baseline"
 	"github.com/ShiroDoromoto/esorp/internal/config"
 	"github.com/ShiroDoromoto/esorp/internal/rule"
 )
@@ -35,39 +33,13 @@ func cfg1() *config.Config {
 	}
 }
 
-// empty は、何も載っていない baseline。
-func empty(t *testing.T) *baseline.Baseline {
-	t.Helper()
-
-	b, err := baseline.Load("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
-}
-
-// holds は、その違反1件だけを載せた baseline。keys は非公開なので、書いて読み直す。
-func holds(t *testing.T, f audit.Finding) *baseline.Baseline {
-	t.Helper()
-
-	path := filepath.Join(t.TempDir(), "esorp-baseline.json")
-	if err := baseline.Save(path, []baseline.Entry{{Key: f.Key, Path: f.Path, ID: f.ID}}); err != nil {
-		t.Fatal(err)
-	}
-	b, err := baseline.Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
-}
-
 // TestExplainVessel は、器の違反で、許されている器の列挙をそのまま見せることを見る（設定ファイルを
 // 開かずに、なぜ違反なのかが分かるところまで）。
 func TestExplainVessel(t *testing.T) {
 	res := &audit.Result{Findings: []audit.Finding{vessel1()}}
 
 	var b strings.Builder
-	if err := Explain(&b, cfg1(), "esorp.yaml", res, empty(t)); err != nil {
+	if err := Explain(&b, cfg1(), "esorp.yaml", res); err != nil {
 		t.Fatal(err)
 	}
 
@@ -92,7 +64,7 @@ func TestExplainForm(t *testing.T) {
 	f.Site = rule.Site{Path: "syntax.cstyle.allow[1].form.paragraphs", Allow: 1, Rule: -1}
 
 	var b strings.Builder
-	if err := Explain(&b, cfg1(), "esorp.yaml", &audit.Result{Findings: []audit.Finding{f}}, empty(t)); err != nil {
+	if err := Explain(&b, cfg1(), "esorp.yaml", &audit.Result{Findings: []audit.Finding{f}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -111,7 +83,7 @@ func TestExplainLabel(t *testing.T) {
 	f.Site = rule.Site{Path: "syntax.cstyle.allow[1].label", Allow: 1, Rule: -1}
 
 	var b strings.Builder
-	if err := Explain(&b, cfg1(), "esorp.yaml", &audit.Result{Findings: []audit.Finding{f}}, empty(t)); err != nil {
+	if err := Explain(&b, cfg1(), "esorp.yaml", &audit.Result{Findings: []audit.Finding{f}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -129,7 +101,7 @@ func TestExplainLexicon(t *testing.T) {
 	res := &audit.Result{Findings: []audit.Finding{lexicon1()}}
 
 	var b strings.Builder
-	if err := Explain(&b, cfg1(), "esorp.yaml", res, empty(t)); err != nil {
+	if err := Explain(&b, cfg1(), "esorp.yaml", res); err != nil {
 		t.Fatal(err)
 	}
 
@@ -137,7 +109,8 @@ func TestExplainLexicon(t *testing.T) {
   // 以前はここで畳んでいた。
   履歴を書かないでください。
   This match depends on a line-wrap seam. The line wrapped at the boundary between half-width and full-width characters,
-  and whether whitespace stood there in the original cannot be recovered. If there is nothing to fix in the original, put it on the baseline.
+  and whether whitespace stood there in the original cannot be recovered. If there is nothing to fix in the original, narrow the rule
+  with where.path, or put its id on severity: advisory.
   severity: enforce — the default (esorp.yaml has no severity.no-history entry). It fails the run
 
   Decided by esorp.yaml at rules[0]:
@@ -149,21 +122,6 @@ func TestExplainLexicon(t *testing.T) {
 `)
 }
 
-// TestExplainBaselined は、baseline が抑えている違反に、そう書き添えることを見る（explain には
-// 出るが check には出ない、と言わなければ「なぜ check が黙るのか」が分からない）。
-func TestExplainBaselined(t *testing.T) {
-	f := vessel1()
-
-	var b strings.Builder
-	if err := Explain(&b, cfg1(), "esorp.yaml", &audit.Result{Findings: []audit.Finding{f}}, holds(t, f)); err != nil {
-		t.Fatal(err)
-	}
-
-	if !strings.Contains(b.String(), "  This violation is held down by the baseline (it does not appear in check).\n") {
-		t.Fatalf("baseline の断りが落ちています:\n%s", b.String())
-	}
-}
-
 // TestExplainAdvisory は、advisory の違反で、強度の値だけでなく、それを決めた設定の場所まで出る
 // ことを見る。explain は「その判断はどこから来たのか」を見せる面なので、強度も出どころを言う。
 func TestExplainAdvisory(t *testing.T) {
@@ -171,7 +129,7 @@ func TestExplainAdvisory(t *testing.T) {
 	f.Severity = config.SeverityAdvisory
 
 	var b strings.Builder
-	if err := Explain(&b, cfg1(), "esorp.yaml", &audit.Result{Findings: []audit.Finding{f}}, empty(t)); err != nil {
+	if err := Explain(&b, cfg1(), "esorp.yaml", &audit.Result{Findings: []audit.Finding{f}}); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
@@ -192,7 +150,7 @@ func TestExplainJSONAdvisory(t *testing.T) {
 	res := &audit.Result{Comments: 1, Findings: []audit.Finding{f}}
 
 	var b strings.Builder
-	if err := ExplainJSON(&b, cfg1(), "esorp.yaml", "internal/store/index.go", 8, res, empty(t)); err != nil {
+	if err := ExplainJSON(&b, cfg1(), "esorp.yaml", "internal/store/index.go", 8, res); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{`"severity": "advisory"`, `"severity_path": "severity.place-not-allowed"`} {
@@ -202,7 +160,7 @@ func TestExplainJSONAdvisory(t *testing.T) {
 	}
 
 	var enforced strings.Builder
-	if err := ExplainJSON(&enforced, cfg1(), "esorp.yaml", "internal/store/index.go", 8, &audit.Result{Comments: 1, Findings: []audit.Finding{vessel1()}}, empty(t)); err != nil {
+	if err := ExplainJSON(&enforced, cfg1(), "esorp.yaml", "internal/store/index.go", 8, &audit.Result{Comments: 1, Findings: []audit.Finding{vessel1()}}); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(enforced.String(), "severity_path") {
@@ -210,12 +168,12 @@ func TestExplainJSONAdvisory(t *testing.T) {
 	}
 }
 
-// TestExplainJSONVessel は、check の violations 1件に、根拠と baseline の状態を足した形を見る。
+// TestExplainJSONVessel は、check の violations 1件に、根拠を足した形を見る。
 func TestExplainJSONVessel(t *testing.T) {
 	res := &audit.Result{Comments: 1, Findings: []audit.Finding{vessel1()}}
 
 	var b strings.Builder
-	if err := ExplainJSON(&b, cfg1(), "esorp.yaml", "internal/store/index.go", 8, res, empty(t)); err != nil {
+	if err := ExplainJSON(&b, cfg1(), "esorp.yaml", "internal/store/index.go", 8, res); err != nil {
 		t.Fatal(err)
 	}
 
@@ -238,7 +196,6 @@ func TestExplainJSONVessel(t *testing.T) {
       "kind": "line",
       "text": "// 前方移行はここで行っていた。",
       "message": "この位置のコメントは許可されていません。",
-      "baselined": false,
       "site": {
         "path": "syntax.cstyle.allow",
         "syntax": "cstyle",
@@ -273,12 +230,11 @@ func TestExplainJSONLexicon(t *testing.T) {
 	res := &audit.Result{Comments: 1, Findings: []audit.Finding{lexicon1()}}
 
 	var b strings.Builder
-	if err := ExplainJSON(&b, cfg1(), "esorp.yaml", "internal/store/index.go", 20, res, empty(t)); err != nil {
+	if err := ExplainJSON(&b, cfg1(), "esorp.yaml", "internal/store/index.go", 20, res); err != nil {
 		t.Fatal(err)
 	}
 
 	if !strings.Contains(b.String(), `      "seam_dependent": true,
-      "baselined": false,
       "site": {
         "path": "rules[0]",
         "rule": {
@@ -309,7 +265,7 @@ func TestExplainJSONForm(t *testing.T) {
 	f.Site = rule.Site{Path: "syntax.cstyle.allow[1].form.paragraphs", Allow: 1, Rule: -1}
 
 	var b strings.Builder
-	if err := ExplainJSON(&b, cfg1(), "esorp.yaml", f.Path, f.Line, &audit.Result{Comments: 1, Findings: []audit.Finding{f}}, empty(t)); err != nil {
+	if err := ExplainJSON(&b, cfg1(), "esorp.yaml", f.Path, f.Line, &audit.Result{Comments: 1, Findings: []audit.Finding{f}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -355,10 +311,10 @@ func TestExplainFormKeys(t *testing.T) {
 			res := &audit.Result{Comments: 1, Findings: []audit.Finding{f}}
 
 			var text, js strings.Builder
-			if err := Explain(&text, cfg, "esorp.yaml", res, empty(t)); err != nil {
+			if err := Explain(&text, cfg, "esorp.yaml", res); err != nil {
 				t.Fatal(err)
 			}
-			if err := ExplainJSON(&js, cfg, "esorp.yaml", f.Path, f.Line, res, empty(t)); err != nil {
+			if err := ExplainJSON(&js, cfg, "esorp.yaml", f.Path, f.Line, res); err != nil {
 				t.Fatal(err)
 			}
 
@@ -396,7 +352,7 @@ func TestExplainJSONStatus(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var b strings.Builder
-			if err := ExplainJSON(&b, cfg1(), "esorp.yaml", "a.go", 1, tc.res, empty(t)); err != nil {
+			if err := ExplainJSON(&b, cfg1(), "esorp.yaml", "a.go", 1, tc.res); err != nil {
 				t.Fatal(err)
 			}
 			if !strings.Contains(b.String(), `"status": "`+tc.want+`"`) {
@@ -415,7 +371,7 @@ func TestCheckAndExplainShareViolationShape(t *testing.T) {
 	if err := JSON(&check, res); err != nil {
 		t.Fatal(err)
 	}
-	if err := ExplainJSON(&explain, cfg1(), "esorp.yaml", "internal/store/index.go", 20, res, empty(t)); err != nil {
+	if err := ExplainJSON(&explain, cfg1(), "esorp.yaml", "internal/store/index.go", 20, res); err != nil {
 		t.Fatal(err)
 	}
 

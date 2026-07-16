@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/ShiroDoromoto/esorp/internal/audit"
-	"github.com/ShiroDoromoto/esorp/internal/baseline"
 	"github.com/ShiroDoromoto/esorp/internal/config"
 	"github.com/ShiroDoromoto/esorp/internal/diff"
 	"github.com/ShiroDoromoto/esorp/internal/report"
@@ -44,7 +43,6 @@ Usage:
   esorp check --text <src>   apply only layer 2 (lexicon) to the given body (for a commit-msg hook;
                              <src> is "-" for stdin, otherwise a file path)
   esorp explain <file>:<line>  explain why the comment on that line violates, and how to settle it
-  esorp baseline update      snapshot the existing violations (ratchets down only)
   esorp lexicon --try <re>   measure a candidate term against your own corpus before adding it to layer 2
   esorp review [<path>...]   hand off comments that passed layers 1 and 2, each with a question (layer 3)
   esorp agent                the entry point for agents (you are the one who answers layer 3)
@@ -63,14 +61,15 @@ check flags:
   --config <path>   where the config file is (default: esorp.yaml). This location becomes the tree root
   --format <fmt>    output format (text | json, default: text)
   --diff            audit only the comments overlapping lines added between the merge base of <ref>
-                    and HEAD and the working tree (for pre-commit / PR). baseline applies too.
-                    Put <ref> last (the other flags come before <ref>)
+                    and HEAD and the working tree (for pre-commit / PR). This is also how you take on
+                    a tree that already has violations: what is outside the diff is not audited, so
+                    only what you touch has to conform. Put <ref> last (the other flags come before <ref>)
   --text <src>      read the given string itself as the body, rather than extracting comments from a
                     file. <src> is "-" for stdin, otherwise a file path (its whole content is read as
                     the body; the comment-extraction path is not taken). Only layer 2 (lexicon) applies;
                     layer 1 (container / form) does not — raw text has no container. To scope a rule to
                     this face, use where.syntax: [text] (a rule that omits where.syntax applies here too).
-                    baseline does not apply. Cannot be combined with --diff. esorp does not know git, so
+                    Cannot be combined with --diff. esorp does not know git, so
                     passing a commit message is the hook's job:
 
                         esorp check --text - < "$1"    # .git/hooks/commit-msg
@@ -87,10 +86,6 @@ explain flags:
 
   <file>:<line> can be pasted straight from a check report (a trailing column is accepted too).
   Besides the violation itself, it points to the config that decided it (the allow list / form / rules).
-
-baseline update flags:
-  --config <path>   where the config file is (default: esorp.yaml)
-  --allow-new       add the current violations to the baseline anew. Not for CI
 
 lexicon flags:
   --config <path>   where the config file is (default: esorp.yaml). This location becomes the tree root
@@ -148,8 +143,6 @@ func runInput(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runCheck(args[1:], stdin, stdout, stderr)
 	case "explain":
 		return runExplain(args[1:], stdout, stderr)
-	case "baseline":
-		return runBaseline(args[1:], stdout, stderr)
 	case "lexicon":
 		return runLexicon(args[1:], stdout, stderr)
 	case "review":
@@ -209,15 +202,16 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 
 // initNextSteps は、生成した設定で最初の check を赤で殴らないための導線。層2 のプリセットは
 // 過去に書かれたコメントにも当たるので、既存のツリーでは初回が赤くなる。赤で殴られたユーザーは
-// ガードごと無視するようになるため、まず今ある違反を baseline に載せて、そこから増やさない。
-// review の案内が条件付きなのは、テンプレートが review: をコメントアウトして吐くからで（層3 は
-// 既定を持たない）、書いていない人に、開かない口を勧めない。
+// ガードごと無視するようになるため、CI で回すのは --diff の方——差分の外は当たらないので、猶予を
+// 記録するものを持たずに「新規だけ止める」が立つ。review の案内が条件付きなのは、テンプレートが
+// review: をコメントアウトして吐くからで（層3 は既定を持たない）、書いていない人に、開かない口を
+// 勧めない。
 const initNextSteps = `
-On a tree that already has comments, the first check will hit the past comments and turn red.
-Snapshot the current violations before you begin (it only ever ratchets down):
+On a tree that already has comments, the whole-tree check will hit the past comments and turn red.
+Gate CI on the changed part instead, and work the existing list down from there:
 
-    esorp baseline update --allow-new    put the current violations into .esorp-baseline.json
-    esorp check                          go no higher from here
+    esorp check --diff    audit only what you touched (this is what CI and the hook run)
+    esorp check           the whole tree — the standing list, to read and grind down
 
 If you enable review: in the config, you can have an agent read the existing comments that pass
 layers 1 and 2 once, on day one (it does not judge; it always exits 0):
@@ -309,7 +303,6 @@ func runCheck(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if code != exitOK {
 		return code
 	}
-	a.result.Suppress(a.base)
 
 	if err := report.Warnings(stderr, a.result.Skipped); err != nil {
 		fmt.Fprintf(stderr, "esorp: %v\n", err)
@@ -336,8 +329,8 @@ func runCheck(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 // メッセージファイルのパスを引数で渡し、シェルを介さないのでリダイレクトが書けない）。どちらの形でも
 // esorp は git を知らず、何を流し込むかは呼び手の裁量にある。ファイルは中身をまるごと本文として読む
 // ——コメントを取り出す道は通らないので、層1（器・書式）は当たらない。--diff は変更行との突き合わせで
-// あり、渡された本文には比べる相手が無いので弾く。baseline も効かない——この面にパスも行も無く、
-// 抑制のキーが立たない。終了コードと --format はツリーの監査と同じで、フックにも CI にも同じ形で挿さる。
+// あり、渡された本文には比べる相手が無いので弾く。終了コードと --format はツリーの監査と同じで、
+// フックにも CI にも同じ形で挿さる。
 func runCheckBody(text, configPath, format string, diffMode bool, rest []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	switch {
 	case diffMode:
@@ -406,7 +399,7 @@ func knownFormat(cmd, format string, stderr io.Writer) bool {
 // runExplain は、指し示された行のコメントについて、違反とその根拠を書く。違反を「禁止」とだけ
 // 伝えると、書き手は言い換えて再投稿する。何がその器を許していないのかまで見せて、はじめて直せる。
 // 監査そのものは check と同じ道を通り、絞り込みだけを「その行に重なるコメント」にする（--diff が
-// 変更行で絞るのと同じ仕組み）。baseline は効かせない（抑えている違反も、問われたなら説明する）。
+// 変更行で絞るのと同じ仕組み）。
 func runExplain(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("explain", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -454,7 +447,7 @@ func runExplain(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if *format == "json" {
-		if err := report.ExplainJSON(stdout, a.cfg, *configPath, rel, line, a.result, a.base); err != nil {
+		if err := report.ExplainJSON(stdout, a.cfg, *configPath, rel, line, a.result); err != nil {
 			fmt.Fprintf(stderr, "esorp: %v\n", err)
 			return exitConfig
 		}
@@ -470,7 +463,7 @@ func runExplain(args []string, stdout, stderr io.Writer) int {
 		return exitOK
 	}
 
-	if err := report.Explain(stdout, a.cfg, *configPath, a.result, a.base); err != nil {
+	if err := report.Explain(stdout, a.cfg, *configPath, a.result); err != nil {
 		fmt.Fprintf(stderr, "esorp: %v\n", err)
 		return exitConfig
 	}
@@ -545,47 +538,6 @@ func locate(root, file string) (string, error) {
 func readable(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.Mode().IsRegular()
-}
-
-// runBaseline は baseline のサブコマンドを捌く。今あるのは update だけで、書き出しはラチェットを
-// 通す（減る方向にしか動かない。もう違反していないキーは落ち、新しい違反は載らない）。
-func runBaseline(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 || args[0] != "update" {
-		fmt.Fprintf(stderr, "esorp baseline: specify update\n")
-		return exitConfig
-	}
-
-	fs := flag.NewFlagSet("baseline update", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	configPath := fs.String("config", "esorp.yaml", "where the config file is")
-	allowNew := fs.Bool("allow-new", false, "add the current violations to the baseline anew (not for CI)")
-	if err := fs.Parse(args[1:]); err != nil {
-		return exitConfig
-	}
-	if fs.NArg() > 0 {
-		fmt.Fprintf(stderr, "esorp baseline update: extra argument %q\n", fs.Arg(0))
-		return exitConfig
-	}
-
-	a, code := scan(*configPath, nil, false, stderr)
-	if code != exitOK {
-		return code
-	}
-	if a.baselinePath == "" {
-		fmt.Fprintln(stderr, "esorp baseline update: the config has no baseline:")
-		return exitConfig
-	}
-
-	before := a.base.Len()
-	entries := a.base.Ratchet(a.result.Entries(), *allowNew)
-	if err := baseline.Save(a.baselinePath, entries); err != nil {
-		fmt.Fprintf(stderr, "esorp: %v\n", err)
-		return exitConfig
-	}
-
-	fmt.Fprintf(stdout, "esorp: wrote the baseline (%d → %d entries / %d violations now)\n",
-		before, len(entries), len(a.result.Findings))
-	return exitOK
 }
 
 // runLexicon は、候補の語彙を自分のコーパスに当てて見せる。設定も README も「足す前に測れ」と言う
@@ -714,19 +666,15 @@ func pathSelection(args []string) audit.Selection {
 	}
 }
 
-// audited は、設定を読んでツリーを走査した結果ひとまとめ。check / explain / baseline update /
-// review が同じ道を通る。
+// audited は、設定を読んでツリーを走査した結果ひとまとめ。check / explain / review が同じ道を通る。
 type audited struct {
-	cfg          *config.Config
-	result       *audit.Result
-	base         *baseline.Baseline
-	baselinePath string
+	cfg    *config.Config
+	result *audit.Result
 }
 
-// scan は、設定を読み、ツリーを走査し、baseline を読む。設定ファイルの置かれた場所が、監査する
-// ツリーの根（設定の glob は、ここからの相対パスに当たる）。sel は監査するコメントの絞り込み
-// （--diff / review のパス指定）で、nil なら絞らない。review は層3 の口を開くかどうか。baseline は
-// まだ効かせない（baseline update は、抑止する前の全違反を要る）。
+// scan は、設定を読み、ツリーを走査する。設定ファイルの置かれた場所が、監査するツリーの根（設定の
+// glob は、ここからの相対パスに当たる）。sel は監査するコメントの絞り込み（--diff / review のパス
+// 指定）で、nil なら絞らない。review は層3 の口を開くかどうか。
 func scan(configPath string, sel audit.Selection, review bool, stderr io.Writer) (*audited, int) {
 	cfg, err := config.Load(configPath)
 	if err != nil {
@@ -734,21 +682,10 @@ func scan(configPath string, sel audit.Selection, review bool, stderr io.Writer)
 		return nil, exitConfig
 	}
 
-	root := filepath.Dir(configPath)
-	res, err := audit.Run(cfg, root, sel, review)
+	res, err := audit.Run(cfg, filepath.Dir(configPath), sel, review)
 	if err != nil {
 		fmt.Fprintf(stderr, "esorp: %v\n", err)
 		return nil, exitConfig
 	}
-
-	path := ""
-	if cfg.Baseline != "" {
-		path = filepath.Join(root, filepath.FromSlash(cfg.Baseline))
-	}
-	base, err := baseline.Load(path)
-	if err != nil {
-		fmt.Fprintf(stderr, "esorp: %v\n", err)
-		return nil, exitConfig
-	}
-	return &audited{cfg: cfg, result: res, base: base, baselinePath: path}, exitOK
+	return &audited{cfg: cfg, result: res}, exitOK
 }

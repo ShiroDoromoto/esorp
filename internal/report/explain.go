@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/ShiroDoromoto/esorp/internal/audit"
-	"github.com/ShiroDoromoto/esorp/internal/baseline"
 	"github.com/ShiroDoromoto/esorp/internal/config"
 	"github.com/ShiroDoromoto/esorp/internal/rule"
 )
@@ -15,7 +14,7 @@ import (
 // （どこで・何に反し・何が書かれていて・どう始末するか）に「その判断はどこから来たのか」を足す。
 // 違反を「禁止」とだけ伝えると書き手は言い換えて再投稿するので、何がその器を許していないのか・
 // どの語彙に当たったのかまで見せる。
-func Explain(w io.Writer, cfg *config.Config, configPath string, res *audit.Result, base *baseline.Baseline) error {
+func Explain(w io.Writer, cfg *config.Config, configPath string, res *audit.Result) error {
 	var b strings.Builder
 	for _, f := range res.Findings {
 		fmt.Fprintf(&b, "%s:%d:%d  %s%s  place=%s kind=%s\n", f.Path, f.Line, f.Col, f.ID, advisoryMark(f.Severity), f.Place, f.Kind)
@@ -23,9 +22,6 @@ func Explain(w io.Writer, cfg *config.Config, configPath string, res *audit.Resu
 		indent(&b, f.Message)
 		if f.SeamDependent {
 			indent(&b, SeamNote)
-		}
-		if base.Has(f.Key) {
-			indent(&b, "This violation is held down by the baseline (it does not appear in check).")
 		}
 		indent(&b, severityNote(configPath, f.ID, f.Severity))
 
@@ -139,8 +135,7 @@ const (
 // jsonExplanation は、違反1件（check の JSON と同じ形）に、それを決めた設定の場所と中身を添えたもの。
 type jsonExplanation struct {
 	jsonViolation
-	Baselined bool     `json:"baselined"`
-	Site      jsonSite `json:"site"`
+	Site jsonSite `json:"site"`
 
 	// SeverityPath は、severity（違反の強度）を決めた設定の場所。severity: に書かれていない id は
 	// enforce なので、そのときは空——決めた場所が設定のどこにも無いことを、欄の不在で告げる。
@@ -205,7 +200,7 @@ type jsonWhere struct {
 
 // ExplainJSON は、Explain と同じ中身を機械可読の形で書く。エージェントは check --format json で
 // 違反を読むので、その1件をそのまま explain に渡して根拠まで JSON で引けるようにする。
-func ExplainJSON(w io.Writer, cfg *config.Config, configPath, path string, line int, res *audit.Result, base *baseline.Baseline) error {
+func ExplainJSON(w io.Writer, cfg *config.Config, configPath, path string, line int, res *audit.Result) error {
 	out := struct {
 		Version      int               `json:"version"`
 		Config       string            `json:"config"`
@@ -222,7 +217,6 @@ func ExplainJSON(w io.Writer, cfg *config.Config, configPath, path string, line 
 	for _, f := range res.Findings {
 		e := jsonExplanation{
 			jsonViolation: violation(f),
-			Baselined:     base.Has(f.Key),
 			Site:          jsonSiteOf(cfg, f),
 		}
 		if f.Severity == config.SeverityAdvisory {

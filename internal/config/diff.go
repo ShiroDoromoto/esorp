@@ -83,9 +83,6 @@ func Diff(local, tmpl *Config) []Section {
 		misc = append(misc, changed("respect_gitignore", "respect_gitignore",
 			fmt.Sprint(local.RespectGitignore), fmt.Sprint(tmpl.RespectGitignore)))
 	}
-	if local.Baseline != tmpl.Baseline {
-		misc = append(misc, changed("baseline", "baseline", local.Baseline, tmpl.Baseline))
-	}
 	if len(misc) > 0 {
 		out = append(out, Section{Title: "the rest", Changes: misc})
 	}

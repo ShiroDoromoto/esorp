@@ -57,9 +57,8 @@ type Config struct {
 	// 層1 の id と衝突しないことは、設定検証が強制している。
 	Severity map[string]string `yaml:"severity"`
 
-	Rules    []Rule  `yaml:"rules"`
-	Review   *Review `yaml:"review"`
-	Baseline string  `yaml:"baseline"`
+	Rules  []Rule  `yaml:"rules"`
+	Review *Review `yaml:"review"`
 
 	// RespectGitignore は、gitignore されたものを走査から外すか。git が「自分のコードではない」と
 	// 宣言しているものを、esorp も自分のコードとして扱わない。gitignore を黙って見にいくのは設定に
@@ -267,7 +266,7 @@ func (c *Config) validate() []string {
 		case seen[r.ID]:
 			add("%s.id: %q is a duplicate", at, r.ID)
 		case slices.Contains(knownViolations, r.ID):
-			add("%s.id: %q is a layer 1 violation id. Both baseline and disposition look up by id, so the two cannot share one", at, r.ID)
+			add("%s.id: %q is a layer 1 violation id. Both severity and disposition look up by id, so the two cannot share one", at, r.ID)
 		default:
 			seen[r.ID] = true
 		}

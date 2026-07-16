@@ -117,7 +117,7 @@ func agentMap() agentDoc {
 		},
 		Cycle: []string{
 			"When you finish writing code, run `esorp check --diff --format json` before you commit.\n" +
-				"It looks only at the changes you touched; violations in existing code are held down by the baseline.",
+				"It looks only at the changes you touched; violations in existing code are outside the diff, so they do not come up.",
 			"If violations appear, fix them. The answer is usually deletion — version control keeps the history,\n" +
 				"and most offending comments have nowhere to be moved to.\n" +
 				"If you don't see why it is a violation, look it up with `esorp explain <path>:<line>`.",
@@ -155,18 +155,13 @@ func agentMap() agentDoc {
 				When:    "After you update esorp. Whether to take in improvements to the default rules is for you, the reader, to decide",
 			},
 			{
-				Command: "esorp baseline update",
-				What:    "Snapshot the violations you have now. A listed violation is not reported, but stays visible as a roster",
-				When:    "Once at adoption. The ratchet only ever turns toward fewer, and is not used in CI",
-			},
-			{
 				Command: "esorp review [<path>...]",
 				What:    "Gather the comments that passed layers 1 and 2 and emit them together with the config's question. It makes no judgment (you are the one who answers)",
 				When:    "Once on your first day. It is the mouth that makes esorp read comments already there; day to day, check --diff's review is enough. If the whole tree is too much, narrow it with <path>",
 			},
 			{
 				Command: "esorp check --text <src> --format json",
-				What:    "Read the given string itself as a body and apply only layer 2 (lexicon) (<src> is \"-\" for stdin, otherwise a file path). Layer 1 (vessel and form) does not apply, and there is no baseline (the output's layers / baseline say so)",
+				What:    "Read the given string itself as a body and apply only layer 2 (lexicon) (<src> is \"-\" for stdin, otherwise a file path). Layer 1 (vessel and form) does not apply (the output's layers says so)",
 				When:    "When you apply the same lexicon to where circumstances driven out of comments take refuge — commit messages, PR bodies, release notes. esorp knows nothing of git, so handing it the body is the caller's job (the commit-msg hook)",
 			},
 			{
@@ -192,7 +187,7 @@ func agentMap() agentDoc {
 				"whether to take it in is for the reader to decide.",
 			"There is no inline suppression comment (// esorp:ignore). A suppression comment would itself become a comment in\n" +
 				"an unpermitted vessel — a contradiction — and it would be a loophole for adding a suppression instead of removing the violation.\n" +
-				"Put exceptions on the baseline (= keep them visible as a roster).",
+				"An exception is declared in the config instead: enumerate the vessel in allow, narrow the rule with where, or put its id on severity: advisory.",
 			"esorp does not rewrite comments. It stays an audit. Fixing them is yours.",
 			"The single source of the forbidden lexicon is esorp.yaml. There is a mouth (check --text) that applies the same lexicon\n" +
 				"to commit messages too, so don't write a separate regexp in the hook — a split denylist always drifts.",

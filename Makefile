@@ -30,7 +30,7 @@ vet:
 test:
 	go test ./...
 
-# esorp を esorp 自身のソースツリーに当てる。baseline を効かせた状態で緑を保つ。
+# esorp を esorp 自身のソースツリーに当てる。ツリー全体を緑に保つ（抑制は持たない）。
 dogfood:
 	go run ./cmd/esorp check
 

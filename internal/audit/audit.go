@@ -1,7 +1,6 @@
 // Package audit は、設定に従ってファイルを集め、スキャナ → 位置クラス → 照合を回す。
 //
-// ここが check の骨格であり、CLI はフラグと終了コードだけを持つ。baseline による除外は
-// 呼び手が走査の後に挟む（Result.Suppress）。
+// ここが check の骨格であり、CLI はフラグと終了コードだけを持つ。
 package audit
 
 import (
@@ -14,7 +13,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/ShiroDoromoto/esorp/internal/baseline"
 	"github.com/ShiroDoromoto/esorp/internal/config"
 	"github.com/ShiroDoromoto/esorp/internal/glob"
 	"github.com/ShiroDoromoto/esorp/internal/place"
@@ -23,7 +21,6 @@ import (
 )
 
 // Finding は違反1件に、それがどのファイルのどの syntax エントリで見つかったかを添えたもの。
-// Key は baseline の照合に使う（行番号を含まない → 無関係な編集でずれない）。
 type Finding struct {
 	// Path はツリーの根からの相対パス。
 	Path string
@@ -31,20 +28,17 @@ type Finding struct {
 	// Syntax は、当たった syntax エントリの名前。
 	Syntax string
 
-	Key string
 	rule.Violation
 }
 
 // Result は1回の走査の結果。Files と Comments は実際に監査した数（Selection で絞ったなら、
 // 絞った後の数）。Skipped は、設定の files: には当たったが、その言語の字句を持っていないので
 // 読まなかったファイル（検査されていないことを呼び手が告げるための材料）。
-// Baselined は baseline に載っていたので Findings から外した件数。
 type Result struct {
-	Files     int
-	Comments  int
-	Findings  []Finding
-	Skipped   []string
-	Baselined int
+	Files    int
+	Comments int
+	Findings []Finding
+	Skipped  []string
 
 	// Review は層3 に渡す材料。設定に review: があり、かつ呼び手が開いたときだけ入る。
 	// nil なら層3 の口は開いていない。
@@ -67,15 +61,6 @@ type Passed struct {
 	place.Comment
 }
 
-// Entries は、今の違反を baseline のエントリに写す。baseline update が書き出すもの。
-func (r *Result) Entries() []baseline.Entry {
-	out := make([]baseline.Entry, 0, len(r.Findings))
-	for _, f := range r.Findings {
-		out = append(out, baseline.Entry{Key: f.Key, Path: f.Path, ID: f.ID})
-	}
-	return out
-}
-
 // Enforced は、この走査に残った enforce の違反の数。check の終了コードはこれで決まり、advisory の
 // 違反は Findings に残ったまま数から外れる——報告には出るが、CI は落とさない。
 func (r *Result) Enforced() int {
@@ -86,19 +71,6 @@ func (r *Result) Enforced() int {
 		}
 	}
 	return n
-}
-
-// Suppress は、baseline に載っている違反を Findings から外す。
-func (r *Result) Suppress(b *baseline.Baseline) {
-	kept := r.Findings[:0]
-	for _, f := range r.Findings {
-		if b.Has(f.Key) {
-			r.Baselined++
-			continue
-		}
-		kept = append(kept, f)
-	}
-	r.Findings = kept
 }
 
 // Selection は、監査するコメントを行の範囲で絞る（両端を含む）。
@@ -121,8 +93,7 @@ func (s Selection) covers(path string, from, to int) bool {
 // 呼び手に委ねてあるのは、層3 を渡す先が2つあるため——書いている最中のエージェント（check --diff）と、
 // 導入初日にツリー全体を読むエージェント（review）。check がツリー全体で層3 を開くことはない。
 // 返すエラーはファイルが読めない類のものだけで、違反は Result に載る（違反はエラーではない）。
-// baseline はここでは効かせない（呼び手が Suppress を呼ぶ）。baseline update は、抑止する前の
-// 全違反を要る。違反はパス → 行 → 桁 → id の順に並べる（1つのコメントが複数の書式に反することが
+// 違反はパス → 行 → 桁 → id の順に並べる（1つのコメントが複数の書式に反することが
 // あり、id まで見ないと並びが揺れる）。
 func Run(cfg *config.Config, root string, sel Selection, review bool) (*Result, error) {
 	res := &Result{Findings: []Finding{}}
@@ -264,10 +235,8 @@ func specOf(cfg *config.Config, m matched) (scan.LangSpec, bool) {
 	return scan.FamilySpec(cfg.FamilyOf(m.syntax))
 }
 
-// auditFile は、ファイル1つを読み、検査して違反を Result に足す。同じ本文の同じ違反が1つの
-// ファイルに何度も現れる（型の全フィールドに付いた同じ行末コメントなど）ため、baseline のキーは
-// 出現順で区別する。sel で落ちるコメントも照合までは回し、出現順だけ進めて報告しない。ここを
-// 飛ばすと、同じ違反のキーが check と check --diff で食い違い、baseline が効かなくなる。
+// auditFile は、ファイル1つを読み、検査して違反を Result に足す。sel で落ちるコメントは照合ごと
+// 飛ばす。
 func auditFile(cfg *config.Config, root string, m matched, sel Selection, res *Result) error {
 	comments, spec, ok, err := read(cfg, root, m)
 	if err != nil {
@@ -286,25 +255,16 @@ func auditFile(cfg *config.Config, root string, m matched, sel Selection, res *R
 		}
 	}
 
-	occurrence := map[string]int{}
-	add := func(c place.Comment, v rule.Violation) {
-		body := scan.Body(c.Text, spec)
-		seed := v.ID + "\x00" + body
-		key := baseline.Key(m.path, v.ID, body, occurrence[seed])
-		occurrence[seed]++
-		if !sel.covers(m.path, c.Line, c.EndLine) {
-			return
-		}
-		res.Findings = append(res.Findings, Finding{Path: m.path, Syntax: m.syntax, Key: key, Violation: v})
-	}
-
 	target := rule.Target{Syntax: m.syntax, Path: m.path}
 	for _, c := range comments {
+		if !sel.covers(m.path, c.Line, c.EndLine) {
+			continue
+		}
 		vs := stamp(evaluate(c, syn, cfg, target, spec), cfg.Severity)
 		for _, v := range vs {
-			add(c, v)
+			res.Findings = append(res.Findings, Finding{Path: m.path, Syntax: m.syntax, Violation: v})
 		}
-		if len(vs) == 0 && res.Review != nil && sel.covers(m.path, c.Line, c.EndLine) {
+		if len(vs) == 0 && res.Review != nil {
 			res.Review.Comments = append(res.Review.Comments, Passed{Path: m.path, Comment: c})
 		}
 	}

@@ -11,11 +11,9 @@ import (
 
 // BodyNote は、取り出しの要らない入力（check --text）に何が当たり、何が当たらないかの断り。当たる
 // のは層2（語彙）だけで、層1（器・書式）は当たらない——渡された本文は、コードのどこに置かれたもの
-// でもないので、器を持たない。baseline も無い——抑制のキーはパスと本文で立つので、その場限りの入力
-// には成立しない。黙って飛ばすと、通ったことが「層1 も通った」「baseline で抑えられる」と読まれる。
-// 当たらない層は、出力で言う。
-const BodyNote = `Only layer 2 (lexicon) applied. Layer 1 (vessel and form) does not apply (the body passed in has no vessel).
-There is no baseline (a one-off input has no key for a suppression to stand on).`
+// でもないので、器を持たない。黙って飛ばすと、通ったことが「層1 も通った」と読まれる。当たらない層は、
+// 出力で言う。
+const BodyNote = `Only layer 2 (lexicon) applied. Layer 1 (vessel and form) does not apply (the body passed in has no vessel).`
 
 // BodyText は、取り出しの要らない入力（check --text）の違反を人間向けに書く。位置は入力の中の行
 // （パスは無い）。当たった段落と始末のしかたを添える。
@@ -49,7 +47,7 @@ func BodyText(w io.Writer, vs []rule.Violation) error {
 
 // jsonBodyReport は、取り出しの要らない入力の機械可読出力。ファイルの監査（jsonReport）とは別の形に
 // してある——パスも、検査したファイル数も、この入力には無い。無い欄を null で埋めて同じ形に見せると、
-// 読み手はそこに値が来ることを期待する。layers と baseline は、当たらない層を機械にも告げるためのもの
+// 読み手はそこに値が来ることを期待する。layers は、当たらない層を機械にも告げるためのもの
 // （→ BodyNote）。
 type jsonBodyReport struct {
 	Version int `json:"version"`
@@ -57,9 +55,8 @@ type jsonBodyReport struct {
 	// Surface は、この入力が当たった面（where.syntax の予約値）。
 	Surface string `json:"surface"`
 
-	Layers   jsonBodyLayers  `json:"layers"`
-	Baseline bool            `json:"baseline"`
-	Summary  jsonBodySummary `json:"summary"`
+	Layers  jsonBodyLayers  `json:"layers"`
+	Summary jsonBodySummary `json:"summary"`
 
 	Violations []jsonBodyViolation `json:"violations"`
 }
@@ -91,13 +88,12 @@ type jsonBodyViolation struct {
 // BodyJSON は、取り出しの要らない入力の違反を機械可読で書く。violations は、空でも null でなく空配列。
 func BodyJSON(w io.Writer, vs []rule.Violation) error {
 	out := jsonBodyReport{
-		Version: 2,
+		Version: 3,
 		Surface: "text",
 		Layers: jsonBodyLayers{
 			Applied:    []string{"lexicon"},
 			NotApplied: []string{"vessel", "form"},
 		},
-		Baseline: false,
 		Summary: jsonBodySummary{
 			Violations: len(vs),
 			Enforce:    audit.Enforced(vs),
