@@ -213,7 +213,7 @@ func ExplainJSON(w io.Writer, cfg *config.Config, configPath, path string, line 
 		Status       string            `json:"status"`
 		Explanations []jsonExplanation `json:"explanations"`
 	}{
-		Version:      1,
+		Version:      2,
 		Config:       configPath,
 		Target:       jsonTarget{Path: path, Line: line},
 		Status:       status(res),
