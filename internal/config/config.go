@@ -64,6 +64,10 @@ type Config struct {
 	// 宣言しているものを、esorp も自分のコードとして扱わない。gitignore を黙って見にいくのは設定に
 	// 見えない挙動になるので、方針としてここに書かせる。git リポジトリでなければ効かない。
 	RespectGitignore bool `yaml:"respect_gitignore"`
+
+	// Warnings は、読み込みは通るが、そのままでは意図どおりに働かない所。設定エラーと違って走行は
+	// 止めない（違反ではない）ので、呼び出し側が見える所へ出す責任を持つ。
+	Warnings []string `yaml:"-"`
 }
 
 // Review は層3（意味）の口。esorp はコメントの意味を判定しない。層1（器と書式）と層2（語彙）を
@@ -255,16 +259,22 @@ func parse(data []byte, path string) (*Config, error) {
 		return nil, &Error{Path: path, Problems: []string{strings.TrimSpace(err.Error())}}
 	}
 
-	if problems := cfg.validate(); len(problems) > 0 {
+	problems, warnings := cfg.validate()
+	if len(problems) > 0 {
 		return nil, &Error{Path: path, Problems: problems}
 	}
+	cfg.Warnings = warnings
 	return &cfg, nil
 }
 
-func (c *Config) validate() []string {
-	var problems []string
+// validate は設定を検め、落とすもの（problems）と告げるだけのもの（warnings）を分けて返す。
+// 強度を分ける境目は書き手の意図の確からしさで、書き間違い以外にありえない形だけを落とす。
+func (c *Config) validate() (problems, warnings []string) {
 	add := func(format string, args ...any) {
 		problems = append(problems, fmt.Sprintf(format, args...))
+	}
+	warn := func(format string, args ...any) {
+		warnings = append(warnings, fmt.Sprintf(format, args...))
 	}
 
 	if len(c.Syntax) == 0 {
@@ -316,6 +326,7 @@ func (c *Config) validate() []string {
 		for _, s := range cancelsOut(r.Where.Syntax) {
 			add("%s.where.syntax: %q and %q cancel out — the exclusion always wins, so %q is a surface this rule never reaches (drop one of the two)", at, s, "!"+s, s)
 		}
+		c.warnExhaustedSyntax(at, r.Where, warn)
 		for _, k := range r.Where.Kind {
 			if strings.HasPrefix(k, "!") {
 				add(`%s.where.kind: %q starts with "!", but kind has no exclusion (syntax and path do): its values are fixed by the tool, so list the kinds you want instead`, at, k)
@@ -342,7 +353,34 @@ func (c *Config) validate() []string {
 			add("severity.%s: %q is not a known strength (%s)", id, v, strings.Join(knownSeverities, " / "))
 		}
 	}
-	return problems
+	return problems, warnings
+}
+
+// warnExhaustedSyntax は、除外だけを並べた where.syntax が面を1つ残らず覆っている所を告げる。
+// 「それ以外すべて」が空になり、そのルールは何にも当たらないまま適合したように見える。syntax の
+// 値域は syntax: のキーと予約値 text で閉じているので、覆っているかは数えれば確定する（where.path
+// の glob は開いた空間なので、同じことは言えない）。エラーではなく警告なのは、この形が「それ以外
+// すべて」という正当な機能の縁にあり、面を足せば自然に直るので、落とすほどの確信が無いため。
+func (c *Config) warnExhaustedSyntax(at string, w Where, warn func(string, ...any)) {
+	if len(w.Syntax) == 0 {
+		return
+	}
+	excluded := map[string]bool{}
+	for _, s := range w.Syntax {
+		name, ok := strings.CutPrefix(s, "!")
+		if !ok {
+			return
+		}
+		excluded[name] = true
+	}
+	surfaces := append(slices.Sorted(maps.Keys(c.Syntax)), SyntaxText)
+	for _, name := range surfaces {
+		if !excluded[name] {
+			return
+		}
+	}
+	warn("%s.where.syntax: the exclusions cover every surface there is (%s), so this rule reaches nothing — it never reports, however the comments read (drop an exclusion, or add the surface it is waiting for to syntax:)",
+		at, strings.Join(surfaces, " / "))
 }
 
 func validateSyntax(name, family string, s Syntax, add func(string, ...any)) {

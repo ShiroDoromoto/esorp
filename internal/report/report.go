@@ -200,6 +200,24 @@ func encode(w io.Writer, v any) error {
 	return enc.Encode(v)
 }
 
+// ConfigWarnings は、読み込みは通ったが、そのままでは意図どおりに働かない設定を告げる。設定エラーと
+// 同じ形（path: を頭に、1件ずつ字下げ）で出し、warning の語だけを違える——読み手が、直す先の探し方を
+// 二度覚えずに済む。違反ではないので、終了コードは動かさない。
+func ConfigWarnings(w io.Writer, path string, warnings []string) error {
+	if len(warnings) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s: config warning", path)
+	for _, warning := range warnings {
+		b.WriteString("\n  ")
+		b.WriteString(warning)
+	}
+	b.WriteByte('\n')
+	_, err := io.WriteString(w, b.String())
+	return err
+}
+
 // Warnings は、検査できなかったファイルを告げる。設定の files: に当たったのに字句を持っていない
 // ファイルは、検査されていない。黙って落とすと「違反はありません」が嘘になるので、必ず見える所に出す。
 func Warnings(w io.Writer, skipped []string) error {

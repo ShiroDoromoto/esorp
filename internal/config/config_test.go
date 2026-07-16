@@ -223,6 +223,40 @@ rules:
 	if !w.SelectsSyntax("cstyle") {
 		t.Error("SelectsSyntax(\"cstyle\") = false, want true（除外だけの並びは、それ以外すべてを選ぶ）")
 	}
+	if len(cfg.Warnings) > 0 {
+		t.Errorf("warnings = %v, want なし（cstyle が面として残っている）", cfg.Warnings)
+	}
+}
+
+// TestLoadRuleWhereSyntaxExhausted は、除外が面を1つ残らず覆った並びが、読み込みを通したうえで
+// 警告になることを見る。同じ名前が正と除外に並ばないので、文字列一致では捕まらない形。
+func TestLoadRuleWhereSyntaxExhausted(t *testing.T) {
+	cfg, err := load(t, `
+syntax:
+  cstyle:
+    files: ["**/*.go"]
+    mode: content-only
+  hash:
+    files: ["**/*.sh"]
+    mode: content-only
+rules:
+  - id: dead-by-exhaustion
+    pattern: "かつて"
+    message: "変化を語っています"
+    where:
+      syntax: ["!cstyle", "!hash", "!text"]
+`)
+	if err != nil {
+		t.Fatalf("読めない: %v（面の全滅はエラーではなく警告なので、読み込みは通る）", err)
+	}
+	if len(cfg.Warnings) != 1 {
+		t.Fatalf("warnings = %v, want 1件", cfg.Warnings)
+	}
+	for _, want := range []string{"rules[0].where.syntax", "cstyle / hash / text"} {
+		if !strings.Contains(cfg.Warnings[0], want) {
+			t.Errorf("warning = %q, want %q を含む", cfg.Warnings[0], want)
+		}
+	}
 }
 
 // TestLoadSeverity は、severity: が層1 の違反 id と rules[].id を分け隔てなく1枚で引けること

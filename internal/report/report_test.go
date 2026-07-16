@@ -286,3 +286,26 @@ func TestWarningsNone(t *testing.T) {
 
 	wants(t, b.String(), "")
 }
+
+func TestConfigWarnings(t *testing.T) {
+	var b strings.Builder
+	if err := ConfigWarnings(&b, "esorp.yaml", []string{"rules[0].where.syntax: ...", "rules[2].where.syntax: ..."}); err != nil {
+		t.Fatal(err)
+	}
+
+	wants(t, b.String(), `esorp.yaml: config warning
+  rules[0].where.syntax: ...
+  rules[2].where.syntax: ...
+`)
+}
+
+// TestConfigWarningsNone は、告げるものが無ければ何も書かないことを見る（警告の口を足しても、
+// 健全な設定の出力は今までと同じ形のまま）。
+func TestConfigWarningsNone(t *testing.T) {
+	var b strings.Builder
+	if err := ConfigWarnings(&b, "esorp.yaml", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	wants(t, b.String(), "")
+}

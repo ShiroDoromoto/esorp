@@ -228,6 +228,10 @@ func runInitDiff(configPath, format string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "esorp: %v\n", err)
 		return exitConfig
 	}
+	if err := report.ConfigWarnings(stderr, configPath, local.Warnings); err != nil {
+		fmt.Fprintf(stderr, "esorp: %v\n", err)
+		return exitConfig
+	}
 	tmpl, err := config.TemplateConfig()
 	if err != nil {
 		fmt.Fprintf(stderr, "esorp: %v\n", err)
@@ -350,6 +354,10 @@ func runCheckBody(text, configPath, format string, diffMode bool, rest []string,
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
+		return exitConfig
+	}
+	if err := report.ConfigWarnings(stderr, configPath, cfg.Warnings); err != nil {
+		fmt.Fprintf(stderr, "esorp: %v\n", err)
 		return exitConfig
 	}
 
@@ -576,6 +584,10 @@ func runLexicon(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return exitConfig
 	}
+	if err := report.ConfigWarnings(stderr, *configPath, cfg.Warnings); err != nil {
+		fmt.Fprintf(stderr, "esorp: %v\n", err)
+		return exitConfig
+	}
 
 	trial, err := audit.Try(cfg, filepath.Dir(*configPath), re)
 	if err != nil {
@@ -679,6 +691,10 @@ func scan(configPath string, sel audit.Selection, review bool, stderr io.Writer)
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
+		return nil, exitConfig
+	}
+	if err := report.ConfigWarnings(stderr, configPath, cfg.Warnings); err != nil {
+		fmt.Fprintf(stderr, "esorp: %v\n", err)
 		return nil, exitConfig
 	}
 
