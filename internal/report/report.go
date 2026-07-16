@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/ShiroDoromoto/esorp/internal/audit"
+	"github.com/ShiroDoromoto/esorp/internal/config"
 )
 
 // Text は、人間向けの出力を書く。
@@ -26,7 +27,7 @@ func Text(w io.Writer, res *audit.Result) error {
 
 	var b strings.Builder
 	for _, f := range res.Findings {
-		fmt.Fprintf(&b, "%s:%d:%d  %s  place=%s kind=%s\n", f.Path, f.Line, f.Col, f.ID, f.Place, f.Kind)
+		fmt.Fprintf(&b, "%s:%d:%d  %s%s  place=%s kind=%s\n", f.Path, f.Line, f.Col, f.ID, advisoryMark(f.Severity), f.Place, f.Kind)
 		indent(&b, f.Text)
 		indent(&b, f.Message)
 		if f.SeamDependent {
@@ -34,10 +35,30 @@ func Text(w io.Writer, res *audit.Result) error {
 		}
 		b.WriteByte('\n')
 	}
-	fmt.Fprintf(&b, "%d violations (%d files / %d comments%s)\n", len(res.Findings), res.Files, res.Comments, baselined(res))
+	fmt.Fprintf(&b, "%d violations%s (%d files / %d comments%s)\n",
+		len(res.Findings), breakdown(res.Enforced(), len(res.Findings)), res.Files, res.Comments, baselined(res))
 
 	_, err := io.WriteString(w, b.String())
 	return err
+}
+
+// advisoryMark は、違反 id に添える強度の印。enforce（既定）には何も添えない——落とすのが普通の
+// 振る舞いで、印が要るのは「報告には出るが落とさない」方。全件に enforce と書いても、読み手が
+// 拾いたい1件が埋もれるだけになる。
+func advisoryMark(severity string) string {
+	if severity == config.SeverityAdvisory {
+		return "  [advisory]"
+	}
+	return ""
+}
+
+// breakdown は、集計に強度の内訳を添える。advisory が1件も無ければ何も添えない——severity: を
+// 書いていないプロジェクトの出力は、今までと同じ形のままにする。
+func breakdown(enforce, total int) string {
+	if enforce == total {
+		return ""
+	}
+	return fmt.Sprintf(" (%d enforce / %d advisory)", enforce, total-enforce)
 }
 
 // SeamNote は、折り返しの継ぎ目に左右される当たりに添える断り。当たった句が、半角と全角の境目で
@@ -94,20 +115,28 @@ type jsonComment struct {
 	Text  string `json:"text"`
 }
 
+// jsonSummary の enforce と advisory は violations の内訳。非ゼロで終わるかを決めるのは enforce の
+// 数だけなので、合計だけでは CI が赤くなるかを読み手が言えない。
 type jsonSummary struct {
 	Files      int `json:"files"`
 	Comments   int `json:"comments"`
 	Violations int `json:"violations"`
+	Enforce    int `json:"enforce"`
+	Advisory   int `json:"advisory"`
 	Baselined  int `json:"baselined"`
 }
 
-// jsonViolation の seam_dependent は、当たりが折り返しの継ぎ目に左右されること（→ SeamNote）。
-// 立たない方が普通なので、立ったときだけ出す。
+// jsonViolation の severity は、この違反が走行を落とすか（enforce）、報告に出るだけか（advisory）。
+// 人間向けの出力と違って既定でも省かない——読み手が形を先に知っている機械には、欄が在るか無いかで
+// 語らせるより、常に値が在る方が読みやすい。
+// seam_dependent は、当たりが折り返しの継ぎ目に左右されること（→ SeamNote）。立たない方が普通
+// なので、立ったときだけ出す。
 type jsonViolation struct {
 	Path          string `json:"path"`
 	Line          int    `json:"line"`
 	Col           int    `json:"col"`
 	ID            string `json:"id"`
+	Severity      string `json:"severity"`
 	Place         string `json:"place"`
 	Kind          string `json:"kind"`
 	Text          string `json:"text"`
@@ -118,11 +147,13 @@ type jsonViolation struct {
 // JSON は、機械可読の出力を書く。violations と skipped は、空でも null でなく空配列にする。
 func JSON(w io.Writer, res *audit.Result) error {
 	out := jsonReport{
-		Version: 2,
+		Version: 3,
 		Summary: jsonSummary{
 			Files:      res.Files,
 			Comments:   res.Comments,
 			Violations: len(res.Findings),
+			Enforce:    res.Enforced(),
+			Advisory:   len(res.Findings) - res.Enforced(),
 			Baselined:  res.Baselined,
 		},
 		Violations: make([]jsonViolation, 0, len(res.Findings)),
@@ -163,6 +194,7 @@ func violation(f audit.Finding) jsonViolation {
 		Line:          f.Line,
 		Col:           f.Col,
 		ID:            f.ID,
+		Severity:      f.Severity,
 		Place:         f.Place.String(),
 		Kind:          f.Kind.String(),
 		Text:          f.Text,

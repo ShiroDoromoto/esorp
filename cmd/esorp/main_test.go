@@ -182,25 +182,31 @@ func TestCheckJSONOutput(t *testing.T) {
 		Summary struct {
 			Files      int `json:"files"`
 			Violations int `json:"violations"`
+			Enforce    int `json:"enforce"`
+			Advisory   int `json:"advisory"`
 		} `json:"summary"`
 		Violations []struct {
-			Path  string `json:"path"`
-			Line  int    `json:"line"`
-			ID    string `json:"id"`
-			Place string `json:"place"`
+			Path     string `json:"path"`
+			Line     int    `json:"line"`
+			ID       string `json:"id"`
+			Severity string `json:"severity"`
+			Place    string `json:"place"`
 		} `json:"violations"`
 	}
 	if err := json.Unmarshal([]byte(stdout.String()), &got); err != nil {
 		t.Fatalf("JSON として読めない: %v\n%s", err, stdout.String())
 	}
 
-	if got.Version != 2 || got.Summary.Files != 1 || got.Summary.Violations != 3 {
-		t.Errorf("summary が違う: %+v", got.Summary)
+	if got.Version != 3 || got.Summary.Files != 1 || got.Summary.Violations != 3 {
+		t.Errorf("summary が違う: version=%d %+v", got.Version, got.Summary)
+	}
+	if got.Summary.Enforce != 3 || got.Summary.Advisory != 0 {
+		t.Errorf("強度の内訳が違う: %+v（severity: を書いていないので全部 enforce）", got.Summary)
 	}
 	if len(got.Violations) != 3 {
 		t.Fatalf("違反が %d 件（3 件のはず）: %+v", len(got.Violations), got.Violations)
 	}
-	if v := got.Violations[0]; v.Path != "a.go" || v.Line != 6 || v.ID != "place-not-allowed" || v.Place != "leading" {
+	if v := got.Violations[0]; v.Path != "a.go" || v.Line != 6 || v.ID != "place-not-allowed" || v.Place != "leading" || v.Severity != "enforce" {
 		t.Errorf("1件目が違う: %+v", v)
 	}
 }
@@ -967,8 +973,8 @@ func F() {
 		t.Fatalf("JSON として読めない: %v\n%s", err, stdout.String())
 	}
 
-	if got.Version != 2 {
-		t.Errorf("version = %d, want 2（review を足した形）", got.Version)
+	if got.Version != 3 {
+		t.Errorf("version = %d, want 3（severity を足した形）", got.Version)
 	}
 	if got.Review == nil {
 		t.Fatalf("review が出ていない:\n%s", stdout.String())

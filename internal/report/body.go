@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/ShiroDoromoto/esorp/internal/audit"
 	"github.com/ShiroDoromoto/esorp/internal/rule"
 )
 
@@ -26,7 +27,7 @@ func BodyText(w io.Writer, vs []rule.Violation) error {
 	var b strings.Builder
 
 	for _, v := range vs {
-		fmt.Fprintf(&b, "%d  %s\n", v.Line, v.ID)
+		fmt.Fprintf(&b, "%d  %s%s\n", v.Line, v.ID, advisoryMark(v.Severity))
 		indent(&b, v.Text)
 		indent(&b, v.Message)
 		if v.SeamDependent {
@@ -38,7 +39,7 @@ func BodyText(w io.Writer, vs []rule.Violation) error {
 	if len(vs) == 0 {
 		b.WriteString("esorp: no violations\n")
 	} else {
-		fmt.Fprintf(&b, "%d violations\n", len(vs))
+		fmt.Fprintf(&b, "%d violations%s\n", len(vs), breakdown(audit.Enforced(vs), len(vs)))
 	}
 	fmt.Fprintf(&b, "%s\n", BodyNote)
 
@@ -69,14 +70,19 @@ type jsonBodyLayers struct {
 	NotApplied []string `json:"not_applied"`
 }
 
+// jsonBodySummary の enforce と advisory は violations の内訳（→ jsonSummary）。
 type jsonBodySummary struct {
 	Violations int `json:"violations"`
+	Enforce    int `json:"enforce"`
+	Advisory   int `json:"advisory"`
 }
 
-// jsonBodyViolation の line は、入力の中の行（当たった段落の先頭）。
+// jsonBodyViolation の line は、入力の中の行（当たった段落の先頭）。severity の効き方は、ファイルの
+// 監査と同じ——強度の表は面をまたいで1つ（→ jsonViolation）。
 type jsonBodyViolation struct {
 	Line          int    `json:"line"`
 	ID            string `json:"id"`
+	Severity      string `json:"severity"`
 	Text          string `json:"text"`
 	Message       string `json:"message"`
 	SeamDependent bool   `json:"seam_dependent,omitempty"`
@@ -85,20 +91,25 @@ type jsonBodyViolation struct {
 // BodyJSON は、取り出しの要らない入力の違反を機械可読で書く。violations は、空でも null でなく空配列。
 func BodyJSON(w io.Writer, vs []rule.Violation) error {
 	out := jsonBodyReport{
-		Version: 1,
+		Version: 2,
 		Surface: "text",
 		Layers: jsonBodyLayers{
 			Applied:    []string{"lexicon"},
 			NotApplied: []string{"vessel", "form"},
 		},
-		Baseline:   false,
-		Summary:    jsonBodySummary{Violations: len(vs)},
+		Baseline: false,
+		Summary: jsonBodySummary{
+			Violations: len(vs),
+			Enforce:    audit.Enforced(vs),
+			Advisory:   len(vs) - audit.Enforced(vs),
+		},
 		Violations: make([]jsonBodyViolation, 0, len(vs)),
 	}
 	for _, v := range vs {
 		out.Violations = append(out.Violations, jsonBodyViolation{
 			Line:          v.Line,
 			ID:            v.ID,
+			Severity:      v.Severity,
 			Text:          v.Text,
 			Message:       strings.TrimRight(v.Message, "\n"),
 			SeamDependent: v.SeamDependent,

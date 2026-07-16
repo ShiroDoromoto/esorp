@@ -74,6 +74,7 @@ func TestExplainVessel(t *testing.T) {
 	wants(t, b.String(), `internal/store/index.go:8:2  place-not-allowed  place=leading kind=line
   // 前方移行はここで行っていた。
   この位置のコメントは許可されていません。
+  severity: enforce — the default (esorp.yaml has no severity.place-not-allowed entry). It fails the run
 
   Decided by esorp.yaml at syntax.cstyle.allow:
     allow[0]  place: header
@@ -137,6 +138,7 @@ func TestExplainLexicon(t *testing.T) {
   履歴を書かないでください。
   This match depends on a line-wrap seam. The line wrapped at the boundary between half-width and full-width characters,
   and whether whitespace stood there in the original cannot be recovered. If there is nothing to fix in the original, put it on the baseline.
+  severity: enforce — the default (esorp.yaml has no severity.no-history entry). It fails the run
 
   Decided by esorp.yaml at rules[0]:
     id: no-history
@@ -159,6 +161,52 @@ func TestExplainBaselined(t *testing.T) {
 
 	if !strings.Contains(b.String(), "  This violation is held down by the baseline (it does not appear in check).\n") {
 		t.Fatalf("baseline の断りが落ちています:\n%s", b.String())
+	}
+}
+
+// TestExplainAdvisory は、advisory の違反で、強度の値だけでなく、それを決めた設定の場所まで出る
+// ことを見る。explain は「その判断はどこから来たのか」を見せる面なので、強度も出どころを言う。
+func TestExplainAdvisory(t *testing.T) {
+	f := vessel1()
+	f.Severity = config.SeverityAdvisory
+
+	var b strings.Builder
+	if err := Explain(&b, cfg1(), "esorp.yaml", &audit.Result{Findings: []audit.Finding{f}}, empty(t)); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"place-not-allowed  [advisory]",
+		"severity: advisory — decided by esorp.yaml at severity.place-not-allowed. It is reported, but it does not fail the run",
+	} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("出力に %q が現れない:\n%s", want, b.String())
+		}
+	}
+}
+
+// TestExplainJSONAdvisory は、機械向けにも強度の出どころ（severity_path）が出ること、既定の enforce
+// では出ないことを見る。決めた場所が設定のどこにも無いことを、欄の不在で告げる。
+func TestExplainJSONAdvisory(t *testing.T) {
+	f := vessel1()
+	f.Severity = config.SeverityAdvisory
+	res := &audit.Result{Comments: 1, Findings: []audit.Finding{f}}
+
+	var b strings.Builder
+	if err := ExplainJSON(&b, cfg1(), "esorp.yaml", "internal/store/index.go", 8, res, empty(t)); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"severity": "advisory"`, `"severity_path": "severity.place-not-allowed"`} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("出力に %q が現れない:\n%s", want, b.String())
+		}
+	}
+
+	var enforced strings.Builder
+	if err := ExplainJSON(&enforced, cfg1(), "esorp.yaml", "internal/store/index.go", 8, &audit.Result{Comments: 1, Findings: []audit.Finding{vessel1()}}, empty(t)); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(enforced.String(), "severity_path") {
+		t.Errorf("既定の enforce なのに severity_path が出ています:\n%s", enforced.String())
 	}
 }
 
@@ -185,6 +233,7 @@ func TestExplainJSONVessel(t *testing.T) {
       "line": 8,
       "col": 2,
       "id": "place-not-allowed",
+      "severity": "enforce",
       "place": "leading",
       "kind": "line",
       "text": "// 前方移行はここで行っていた。",

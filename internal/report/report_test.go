@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ShiroDoromoto/esorp/internal/audit"
+	"github.com/ShiroDoromoto/esorp/internal/config"
 	"github.com/ShiroDoromoto/esorp/internal/place"
 	"github.com/ShiroDoromoto/esorp/internal/rule"
 	"github.com/ShiroDoromoto/esorp/internal/scan"
@@ -18,14 +19,15 @@ func vessel1() audit.Finding {
 		Syntax: "cstyle",
 		Key:    "k1",
 		Violation: rule.Violation{
-			ID:      rule.PlaceNotAllowed,
-			Line:    8,
-			Col:     2,
-			Place:   place.Leading,
-			Kind:    scan.KindLine,
-			Text:    "// 前方移行はここで行っていた。",
-			Message: "この位置のコメントは許可されていません。\n",
-			Site:    rule.Site{Path: "syntax.cstyle.allow", Rule: -1},
+			ID:       rule.PlaceNotAllowed,
+			Line:     8,
+			Col:      2,
+			Severity: config.SeverityEnforce,
+			Place:    place.Leading,
+			Kind:     scan.KindLine,
+			Text:     "// 前方移行はここで行っていた。",
+			Message:  "この位置のコメントは許可されていません。\n",
+			Site:     rule.Site{Path: "syntax.cstyle.allow", Rule: -1},
 		},
 	}
 }
@@ -40,6 +42,7 @@ func lexicon1() audit.Finding {
 			ID:            "no-history",
 			Line:          20,
 			Col:           1,
+			Severity:      config.SeverityEnforce,
 			Place:         place.Doc,
 			Kind:          scan.KindDocLine,
 			Text:          "// 以前はここで畳んでいた。",
@@ -116,6 +119,28 @@ internal/store/index.go:20:1  no-history  place=doc kind=docline
 `)
 }
 
+// TestTextAdvisory は、advisory の違反が「弱い」と分かる形で出ることを見る。印が付くのは advisory
+// だけで、集計の内訳は advisory が居るときだけ出る（severity: を書いていないプロジェクトの出力は
+// 今までと同じ形のまま）。
+func TestTextAdvisory(t *testing.T) {
+	weak := lexicon1()
+	weak.Severity = config.SeverityAdvisory
+
+	var b strings.Builder
+	if err := Text(&b, &audit.Result{Files: 1, Comments: 2, Findings: []audit.Finding{vessel1(), weak}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"place-not-allowed  place=leading",
+		"no-history  [advisory]  place=doc",
+		"2 violations (1 enforce / 1 advisory) (1 files / 2 comments)",
+	} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("出力に %q が現れない:\n%s", want, b.String())
+		}
+	}
+}
+
 // TestTextWithoutMessage は、disposition が空のときに空行を差し込まないことを見る（省略できる）。
 func TestTextWithoutMessage(t *testing.T) {
 	f := vessel1()
@@ -150,11 +175,13 @@ func TestJSON(t *testing.T) {
 	}
 
 	wants(t, b.String(), `{
-  "version": 2,
+  "version": 3,
   "summary": {
     "files": 3,
     "comments": 12,
     "violations": 2,
+    "enforce": 2,
+    "advisory": 0,
     "baselined": 1
   },
   "violations": [
@@ -163,6 +190,7 @@ func TestJSON(t *testing.T) {
       "line": 8,
       "col": 2,
       "id": "place-not-allowed",
+      "severity": "enforce",
       "place": "leading",
       "kind": "line",
       "text": "// 前方移行はここで行っていた。",
@@ -173,6 +201,7 @@ func TestJSON(t *testing.T) {
       "line": 20,
       "col": 1,
       "id": "no-history",
+      "severity": "enforce",
       "place": "doc",
       "kind": "docline",
       "text": "// 以前はここで畳んでいた。",

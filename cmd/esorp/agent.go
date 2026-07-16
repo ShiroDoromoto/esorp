@@ -177,7 +177,7 @@ func agentMap() agentDoc {
 		},
 		Output: agentOutput{
 			Command:    "esorp check --diff --format json",
-			Violations: "Violations. Each carries path / line / col / id / place / kind / text / message. The message even tells you how to deal with it",
+			Violations: "Violations. Each carries path / line / col / id / severity / place / kind / text / message. The message even tells you how to deal with it, and severity tells you whether it fails the run (enforce) or is only reported (advisory). summary carries the enforce / advisory breakdown",
 			Review:     "The material for layer 3. review.question (the question put to you) and review.comments (the comments that passed layers 1 and 2). The answer is not here — you are the one who produces it",
 			Closed:     "If there is no review, layer 3 is closed. Either the config has no review:, or you did not narrow with --diff",
 		},

@@ -18,7 +18,7 @@ import (
 func Explain(w io.Writer, cfg *config.Config, configPath string, res *audit.Result, base *baseline.Baseline) error {
 	var b strings.Builder
 	for _, f := range res.Findings {
-		fmt.Fprintf(&b, "%s:%d:%d  %s  place=%s kind=%s\n", f.Path, f.Line, f.Col, f.ID, f.Place, f.Kind)
+		fmt.Fprintf(&b, "%s:%d:%d  %s%s  place=%s kind=%s\n", f.Path, f.Line, f.Col, f.ID, advisoryMark(f.Severity), f.Place, f.Kind)
 		indent(&b, f.Text)
 		indent(&b, f.Message)
 		if f.SeamDependent {
@@ -27,6 +27,7 @@ func Explain(w io.Writer, cfg *config.Config, configPath string, res *audit.Resu
 		if base.Has(f.Key) {
 			indent(&b, "This violation is held down by the baseline (it does not appear in check).")
 		}
+		indent(&b, severityNote(configPath, f.ID, f.Severity))
 
 		b.WriteByte('\n')
 		fmt.Fprintf(&b, "  Decided by %s at %s:\n", configPath, f.Site.Path)
@@ -40,6 +41,21 @@ func Explain(w io.Writer, cfg *config.Config, configPath string, res *audit.Resu
 
 	_, err := io.WriteString(w, b.String())
 	return err
+}
+
+// severityNote は、この違反の強度と、それがどこで決まったかを1行で言う。explain は「その判断は
+// どこから来たのか」を見せる面なので、強度も値だけでなく出どころまで示す——advisory なら書いた
+// 場所（severity.<id>）、enforce なら設定に書いていないこと自体が出どころ。
+func severityNote(configPath, id, severity string) string {
+	if severity == config.SeverityAdvisory {
+		return fmt.Sprintf("severity: advisory — decided by %s at %s. It is reported, but it does not fail the run", configPath, severityPath(id))
+	}
+	return fmt.Sprintf("severity: enforce — the default (%s has no %s entry). It fails the run", configPath, severityPath(id))
+}
+
+// severityPath は、その違反の強度を決める設定の場所。
+func severityPath(id string) string {
+	return "severity." + id
 }
 
 // site は、違反を決めた設定の該当箇所を、その中身ごと書き出す。設定ファイルを開かずに、なぜこの
@@ -125,6 +141,10 @@ type jsonExplanation struct {
 	jsonViolation
 	Baselined bool     `json:"baselined"`
 	Site      jsonSite `json:"site"`
+
+	// SeverityPath は、severity（違反の強度）を決めた設定の場所。severity: に書かれていない id は
+	// enforce なので、そのときは空——決めた場所が設定のどこにも無いことを、欄の不在で告げる。
+	SeverityPath string `json:"severity_path,omitempty"`
 }
 
 // jsonSite は、違反を決めた設定の該当箇所。違反 id と設定は一対一なので、下の4つのうち1つだけが立つ。
@@ -200,11 +220,15 @@ func ExplainJSON(w io.Writer, cfg *config.Config, configPath, path string, line 
 		Explanations: make([]jsonExplanation, 0, len(res.Findings)),
 	}
 	for _, f := range res.Findings {
-		out.Explanations = append(out.Explanations, jsonExplanation{
+		e := jsonExplanation{
 			jsonViolation: violation(f),
 			Baselined:     base.Has(f.Key),
 			Site:          jsonSiteOf(cfg, f),
-		})
+		}
+		if f.Severity == config.SeverityAdvisory {
+			e.SeverityPath = severityPath(f.ID)
+		}
+		out.Explanations = append(out.Explanations, e)
 	}
 
 	return encode(w, out)

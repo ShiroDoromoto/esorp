@@ -366,7 +366,8 @@ func Enforced(vs []rule.Violation) int {
 	return n
 }
 
-// enforces は、その違反が CI を落とすかを見る。
+// enforces は、その違反が CI を落とすかを見る。落とさないのは advisory と名指しされたものだけで、
+// 強度を載せそこねた違反は落とす側に倒す——落とすのが既定であり、載せ忘れが黙って緑にしてはならない。
 func enforces(v rule.Violation) bool {
-	return v.Severity == config.SeverityEnforce
+	return v.Severity != config.SeverityAdvisory
 }
