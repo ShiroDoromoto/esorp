@@ -146,6 +146,22 @@ disposition:
   form-paragraphs: |
     doc コメントの段落は1つです。付け足された段落は、多くの場合、目の前のコードの説明ではありません。
 
+# 違反の「強さ」。鍵は disposition と同じ違反 id（層1 の id と、下の rules[].id）。値は
+# enforce（既定）と advisory の2つだけ。esorp check が非ゼロで終わるのは enforce の違反だけで、
+# advisory は報告に出ますが CI を落としません。書かれていない id は enforce です——ツールの中に
+# 隠れた強度はありません。
+#
+# 使いどころは、ルールを既存のコードへ導入・強化する場面です。当てた初日は正当なコメントまで
+# 赤くなるので、そこを advisory にして、報告を見ながら直し、直りきったら消して enforce へ戻します。
+#
+# 「効かせない」に当たる off は持ちません。それは既にある言い方で全部言えます——層1 の書式は
+# headings: allow / subject: off、器は allow に列挙する、層2 は rules: からエントリを消す。
+# 二つ目の言い方を足せば、同じことが二箇所で言えて、必ず食い違います。
+#
+# severity:
+#   form-paragraphs: advisory
+#   no-history: advisory
+
 # git が「自分のコードではない」と宣言しているものを、esorp も自分のコードとして扱わない。
 # gitignore を黙って見にいくのは設定に見えない挙動になるので、方針としてここに書く。
 respect_gitignore: true
