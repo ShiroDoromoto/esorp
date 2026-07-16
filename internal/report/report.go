@@ -139,7 +139,7 @@ type jsonViolation struct {
 // JSON は、機械可読の出力を書く。violations と skipped は、空でも null でなく空配列にする。
 func JSON(w io.Writer, res *audit.Result) error {
 	out := jsonReport{
-		Version: 4,
+		Version: 3,
 		Summary: jsonSummary{
 			Files:      res.Files,
 			Comments:   res.Comments,

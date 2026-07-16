@@ -59,7 +59,7 @@ func TestBodyJSON(t *testing.T) {
 	}
 
 	wants(t, b.String(), `{
-  "version": 3,
+  "version": 2,
   "surface": "text",
   "layers": {
     "applied": [

@@ -162,7 +162,7 @@ func TestJSON(t *testing.T) {
 	}
 
 	wants(t, b.String(), `{
-  "version": 4,
+  "version": 3,
   "summary": {
     "files": 3,
     "comments": 12,

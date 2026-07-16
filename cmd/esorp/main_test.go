@@ -197,7 +197,7 @@ func TestCheckJSONOutput(t *testing.T) {
 		t.Fatalf("JSON として読めない: %v\n%s", err, stdout.String())
 	}
 
-	if got.Version != 4 || got.Summary.Files != 1 || got.Summary.Violations != 3 {
+	if got.Version != 3 || got.Summary.Files != 1 || got.Summary.Violations != 3 {
 		t.Errorf("summary が違う: version=%d %+v", got.Version, got.Summary)
 	}
 	if got.Summary.Enforce != 3 || got.Summary.Advisory != 0 {
@@ -911,8 +911,8 @@ func F() {
 		t.Fatalf("JSON として読めない: %v\n%s", err, stdout.String())
 	}
 
-	if got.Version != 4 {
-		t.Errorf("version = %d, want 4（baselined の欄を持たない形）", got.Version)
+	if got.Version != 3 {
+		t.Errorf("version = %d, want 3（severity を足し、baselined を落とした形）", got.Version)
 	}
 	if got.Review == nil {
 		t.Fatalf("review が出ていない:\n%s", stdout.String())

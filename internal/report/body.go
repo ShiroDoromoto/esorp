@@ -88,7 +88,7 @@ type jsonBodyViolation struct {
 // BodyJSON は、取り出しの要らない入力の違反を機械可読で書く。violations は、空でも null でなく空配列。
 func BodyJSON(w io.Writer, vs []rule.Violation) error {
 	out := jsonBodyReport{
-		Version: 3,
+		Version: 2,
 		Surface: "text",
 		Layers: jsonBodyLayers{
 			Applied:    []string{"lexicon"},
