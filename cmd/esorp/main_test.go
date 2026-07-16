@@ -704,7 +704,7 @@ func TestExplainJSON(t *testing.T) {
 	cfgPath := tree(t, testConfig, testSource)
 
 	out := explainJSONOf(t, cfgPath, "a.go:6:2", exitViolated)
-	if out.Version != 1 || out.Config != cfgPath || out.Status != "violated" {
+	if out.Version != 2 || out.Config != cfgPath || out.Status != "violated" {
 		t.Errorf("頭が違う: %+v", out)
 	}
 	if out.Target.Path != "a.go" || out.Target.Line != 6 {

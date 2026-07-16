@@ -178,7 +178,7 @@ func TestExplainJSONVessel(t *testing.T) {
 	}
 
 	wants(t, b.String(), `{
-  "version": 1,
+  "version": 2,
   "config": "esorp.yaml",
   "target": {
     "path": "internal/store/index.go",

@@ -105,7 +105,7 @@ func agentMap() agentDoc {
 				Name:          "Lexicon",
 				Sees:          "Project-specific set phrases that appear in a comment's body",
 				Deterministic: true,
-				Who:           "esorp — but the lexicon lives only in the config file (init writes a preset; removing or adding terms is the user's)",
+				Who:           "esorp — but the lexicon lives only in the config file (init writes presets; removing or adding terms is the user's)",
 			},
 			{
 				Layer:         3,
