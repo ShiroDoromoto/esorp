@@ -37,6 +37,20 @@ func checkText(t *testing.T, cfgPath, body string, args ...string) (int, string)
 	return code, stdout.String()
 }
 
+// TestCheckTextSeverityExitCode は、--text の終了コードも enforce の違反だけで決まることを確かめる。
+// フックにも CI にも同じ形で挿さる口なので、強度の効き方もツリーの監査と同じでなければならない。
+func TestCheckTextSeverityExitCode(t *testing.T) {
+	body := "認証を直す\n\nこの関数はかつて同期だった。"
+
+	cfgPath := tree(t, textConfig+"severity:\n  no-history: advisory\n", "")
+	if got, out := checkText(t, cfgPath, body); got != exitOK {
+		t.Errorf("check --text - = %d, want %d（advisory は落とさない）\n%s", got, exitOK, out)
+	}
+	if _, out := checkText(t, cfgPath, body); !strings.Contains(out, "no-history") {
+		t.Errorf("advisory の違反が報告から消えている:\n%s", out)
+	}
+}
+
 func TestCheckTextExitCodes(t *testing.T) {
 	cfgPath := tree(t, textConfig, "")
 

@@ -182,8 +182,8 @@ func agentMap() agentDoc {
 			Closed:     "If there is no review, layer 3 is closed. Either the config has no review:, or you did not narrow with --diff",
 		},
 		ExitCodes: []agentExit{
-			{Code: exitOK, Meaning: "Conforms"},
-			{Code: exitViolated, Meaning: "Violations present (the contents of review do not move the exit code)"},
+			{Code: exitOK, Meaning: "Conforms — or the only violations left are advisory ones"},
+			{Code: exitViolated, Meaning: "An enforced violation is present. Only severity: enforce (the default) moves this code — advisory violations are reported but never fail the run, and neither do the contents of review"},
 			{Code: exitConfig, Meaning: "Config error (config unreadable, schema violation, or misuse)"},
 		},
 		Rules: []string{

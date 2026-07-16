@@ -89,6 +89,58 @@ func TestRunExitCodes(t *testing.T) {
 	}
 }
 
+// TestCheckSeverityExitCode は、check の終了コードを enforce の違反だけが動かすことを確かめる。
+// testSource は place-not-allowed 2件と label-required 1件に反する。
+func TestCheckSeverityExitCode(t *testing.T) {
+	tests := []struct {
+		name     string
+		severity string
+		want     int
+	}{
+		{"severity: を書かなければ全部 enforce", "", exitViolated},
+		{"一部を advisory にしても enforce が残れば違反あり", "severity:\n  place-not-allowed: advisory\n", exitViolated},
+		{"当たる違反が全部 advisory なら適合", "severity:\n  place-not-allowed: advisory\n  label-required: advisory\n", exitOK},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfgPath := tree(t, testConfig+tt.severity, testSource)
+			if got := run([]string{"check", "--config", cfgPath}, io.Discard, io.Discard); got != tt.want {
+				t.Errorf("check = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestCheckAdvisoryStillReported は、advisory の違反が報告から消えないことを確かめる。強度が変えるのは
+// 終了コードだけで、黙らせる（消す）のは baseline の仕事——advisory は「見えるが落とさない」。
+func TestCheckAdvisoryStillReported(t *testing.T) {
+	cfgPath := tree(t, testConfig+"severity:\n  place-not-allowed: advisory\n  label-required: advisory\n", testSource)
+
+	var stdout strings.Builder
+	if got := run([]string{"check", "--config", cfgPath}, &stdout, io.Discard); got != exitOK {
+		t.Fatalf("check = %d, want %d（当たる違反は全部 advisory）", got, exitOK)
+	}
+	if out := stdout.String(); !strings.Contains(out, "3 violations") {
+		t.Errorf("advisory の違反が報告から消えている:\n%s", out)
+	}
+}
+
+// TestExplainAdvisory は、explain が強度を見ないことを確かめる。explain は門ではなく「設定に反して
+// いるか」への答えであり、advisory は「反しているが CI は落とさない」であって「反していない」ではない。
+func TestExplainAdvisory(t *testing.T) {
+	cfgPath := tree(t, testConfig+"severity:\n  place-not-allowed: advisory\n", testSource)
+	dir := filepath.Dir(cfgPath)
+
+	for _, format := range []string{"text", "json"} {
+		t.Run(format, func(t *testing.T) {
+			args := []string{"explain", "--config", cfgPath, "--format", format, filepath.Join(dir, "a.go") + ":6"}
+			if got := run(args, io.Discard, io.Discard); got != exitViolated {
+				t.Errorf("explain = %d, want %d（advisory でも違反は違反）", got, exitViolated)
+			}
+		})
+	}
+}
+
 func TestRunHelpPrintsUsageToStdout(t *testing.T) {
 	var stdout strings.Builder
 	if got := run([]string{"help"}, &stdout, io.Discard); got != exitOK {

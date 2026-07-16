@@ -25,7 +25,7 @@ func Text(cfg *config.Config, body string) []rule.Violation {
 	out := []rule.Violation{}
 	for _, p := range paragraphs(body) {
 		c := place.Comment{Text: p.text, Line: p.line, EndLine: p.endLine, Place: place.None, Kind: scan.KindNone}
-		out = append(out, rule.Lexicon(c, cfg.Rules, target, spec)...)
+		out = append(out, stamp(rule.Lexicon(c, cfg.Rules, target, spec), cfg.Severity)...)
 	}
 	return out
 }
