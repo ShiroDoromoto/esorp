@@ -36,13 +36,30 @@ var knownViolations = []string{
 	"form-subject", "form-headings", "form-paragraphs", "form-max-lines", "form-urls",
 }
 
+// severity の値。書かれていない id は Enforce で、ツールの中に隠れた強度は無い。
+// 「効かせない」を意味する3つ目の値は持たない——層1 の書式は headings: allow / subject: off、
+// 器は allow に列挙する、層2 は rules: からエントリを消す、と既存の言い方で全部言えるので、
+// 二つ目の言い方を足せば同じことが二箇所で言えて必ずドリフトする。
+const (
+	SeverityEnforce  = "enforce"
+	SeverityAdvisory = "advisory"
+)
+
+var knownSeverities = []string{SeverityEnforce, SeverityAdvisory}
+
 // Config は esorp.yaml の全体。
 type Config struct {
 	Syntax      map[string]Syntax `yaml:"syntax"`
 	Disposition map[string]string `yaml:"disposition"`
-	Rules       []Rule            `yaml:"rules"`
-	Review      *Review           `yaml:"review"`
-	Baseline    string            `yaml:"baseline"`
+
+	// Severity は違反 id ごとの強制の強度（id → enforce | advisory）。鍵は層1 の違反 id と
+	// rules[].id を合わせた1つの id 空間で、層1・層2 を分け隔てなく1枚で扱える——rules[].id が
+	// 層1 の id と衝突しないことは、設定検証が強制している。
+	Severity map[string]string `yaml:"severity"`
+
+	Rules    []Rule  `yaml:"rules"`
+	Review   *Review `yaml:"review"`
+	Baseline string  `yaml:"baseline"`
 
 	// RespectGitignore は、gitignore されたものを走査から外すか。git が「自分のコードではない」と
 	// 宣言しているものを、esorp も自分のコードとして扱わない。gitignore を黙って見にいくのは設定に
@@ -285,6 +302,15 @@ func (c *Config) validate() []string {
 	for _, id := range slices.Sorted(maps.Keys(c.Disposition)) {
 		if !slices.Contains(knownViolations, id) {
 			add("disposition.%s: 不明な違反 id です（%s）", id, strings.Join(knownViolations, " / "))
+		}
+	}
+
+	for _, id := range slices.Sorted(maps.Keys(c.Severity)) {
+		if !slices.Contains(knownViolations, id) && !seen[id] {
+			add("severity.%s: 不明な違反 id です（層1 の %s、または rules[].id）", id, strings.Join(knownViolations, " / "))
+		}
+		if v := c.Severity[id]; !slices.Contains(knownSeverities, v) {
+			add("severity.%s: %q は不明な強度です（%s）", id, v, strings.Join(knownSeverities, " / "))
 		}
 	}
 	return problems
