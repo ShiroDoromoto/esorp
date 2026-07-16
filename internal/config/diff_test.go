@@ -63,16 +63,16 @@ syntax:
 baseline: .esorp-baseline.json
 `)
 
-	if !strings.Contains(got, "テンプレートの cstyle-rust と対応") {
+	if !strings.Contains(got, "paired with cstyle-rust in the template") {
 		t.Errorf("cstyle が cstyle-rust に対応づいていない:\n%s", got)
 	}
-	if !strings.Contains(got, "allow[doc].form.subject  手元: required  テンプレート: （無し）") {
+	if !strings.Contains(got, "allow[doc].form.subject  yours: required  template: (none)") {
 		t.Errorf("subject の食い違いが出ていない:\n%s", got)
 	}
-	if strings.Contains(got, "手元だけにある syntax エントリ") {
+	if strings.Contains(got, "syntax entries only in yours") {
 		t.Errorf("対応づいたエントリが「手元だけ」として出ている:\n%s", got)
 	}
-	if strings.Contains(got, "テンプレートの cstyle-go と対応") {
+	if strings.Contains(got, "paired with cstyle-go in the template") {
 		t.Errorf("差の無い組が出ている:\n%s", got)
 	}
 }
@@ -93,10 +93,10 @@ syntax:
 baseline: .esorp-baseline.json
 `)
 
-	if n := strings.Count(got, "見にいくファイル"); n != 1 {
+	if n := strings.Count(got, "the files being looked at"); n != 1 {
 		t.Errorf("「見にいくファイル」の節 = %d 個, want 1\n%s", n, got)
 	}
-	if strings.Contains(got, "手元だけ: **/*.go") || strings.Contains(got, "手元だけ: **/*.rs") {
+	if strings.Contains(got, "yours only: **/*.go") || strings.Contains(got, "yours only: **/*.rs") {
 		t.Errorf("テンプレートも見ている glob が「手元だけ」として出ている:\n%s", got)
 	}
 }
@@ -115,7 +115,7 @@ syntax:
 baseline: .esorp-baseline.json
 `)
 
-	if !strings.Contains(got, "テンプレートだけにある syntax エントリ") {
+	if !strings.Contains(got, "syntax entries only in the template") {
 		t.Errorf("テンプレートだけのエントリが挙がっていない:\n%s", got)
 	}
 	if !strings.Contains(got, "cssblock") {
@@ -177,10 +177,10 @@ baseline: .esorp-baseline.json
 `)
 
 	for _, want := range []string{
-		"allow[doc].form.paragraphs  手元: 2  テンプレート: 1",
-		"allow[leading]  手元だけにあります",
-		"no-history.pattern  手元: かつて  テンプレート: ",
-		"no-jargon  手元だけにあります（あなたの選択）",
+		"allow[doc].form.paragraphs  yours: 2  template: 1",
+		"allow[leading]  in yours only",
+		"no-history.pattern  yours: かつて  template: ",
+		"no-jargon  in yours only (your choice)",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("%q が出ていない:\n%s", want, got)
