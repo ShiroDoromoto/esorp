@@ -317,7 +317,9 @@ func (c *Config) validate() []string {
 			add("%s.where.syntax: %q and %q cancel out — the exclusion always wins, so %q is a surface this rule never reaches (drop one of the two)", at, s, "!"+s, s)
 		}
 		for _, k := range r.Where.Kind {
-			if _, ok := scan.ParseKind(k); !ok {
+			if strings.HasPrefix(k, "!") {
+				add(`%s.where.kind: %q starts with "!", but kind has no exclusion (syntax and path do): its values are fixed by the tool, so list the kinds you want instead`, at, k)
+			} else if _, ok := scan.ParseKind(k); !ok {
 				add("%s.where.kind: %q is not a known kind", at, k)
 			}
 		}
