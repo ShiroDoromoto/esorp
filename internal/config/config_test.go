@@ -73,27 +73,46 @@ func TestLoadTemplate(t *testing.T) {
 	if !cfg.RespectGitignore {
 		t.Error("respect_gitignore = false, want true")
 	}
-	if len(cfg.Rules) != 1 {
-		t.Fatalf("rules = %v, want プリセット1件（init は現物を書き込んで吐く）", cfg.Rules)
+	rules := map[string]Rule{}
+	for _, r := range cfg.Rules {
+		rules[r.ID] = r
 	}
-	r := cfg.Rules[0]
-	if r.ID != "no-history" {
-		t.Errorf("rules[0].id = %q, want no-history", r.ID)
+	if len(cfg.Rules) != 2 || len(rules) != 2 {
+		t.Fatalf("rules = %v, want プリセット2件（init は現物を書き込んで吐く）", cfg.Rules)
 	}
-	if r.Message == "" {
-		t.Error("rules[0].message が空（違反の始末のしかたを言えない）")
+	for _, id := range []string{"no-history", "internal-ref"} {
+		if r, ok := rules[id]; !ok {
+			t.Errorf("プリセットに %q が無い", id)
+		} else if r.Message == "" {
+			t.Errorf("rules[%s].message が空（違反の始末のしかたを言えない）", id)
+		}
 	}
-	if len(r.Where.Syntax) != 0 || len(r.Where.Kind) != 0 || len(r.Where.Path) != 0 {
-		t.Errorf("rules[0].where = %+v, want 省略（全エントリに当てる）", r.Where)
+
+	h := rules["no-history"]
+	if len(h.Where.Syntax) != 0 || len(h.Where.Kind) != 0 || len(h.Where.Path) != 0 {
+		t.Errorf("rules[no-history].where = %+v, want 省略（全エントリに当てる）", h.Where)
 	}
 	for _, s := range []string{"this used to", "かつて", "従来は"} {
-		if !r.Regexp.MatchString(s) {
+		if !h.Regexp.MatchString(s) {
 			t.Errorf("プリセットが %q に当たらない", s)
 		}
 	}
 	for _, s := range []string{"no longer needed", "is used to build the index", "従来どおり"} {
-		if r.Regexp.MatchString(s) {
+		if h.Regexp.MatchString(s) {
 			t.Errorf("プリセットが %q に当たる（実測で偽陽性が支配的だった形）", s)
+		}
+	}
+
+	ref := rules["internal-ref"]
+	if !ref.Regexp.MatchString("closes #123") {
+		t.Error("internal-ref が追跡番号に当たらない")
+	}
+	if slices.Contains(ref.Where.Syntax, SyntaxText) {
+		t.Errorf("internal-ref.where.syntax = %v, want text 抜き（参照の正しい行き先を塞がない）", ref.Where.Syntax)
+	}
+	for _, s := range ref.Where.Syntax {
+		if _, ok := cfg.Syntax[s]; !ok {
+			t.Errorf("internal-ref.where.syntax の %q が syntax: に無い", s)
 		}
 	}
 }
