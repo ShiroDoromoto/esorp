@@ -71,6 +71,9 @@ func Diff(local, tmpl *Config) []Section {
 	if changes := diffMap("disposition", local.Disposition, tmpl.Disposition); len(changes) > 0 {
 		out = append(out, Section{Title: "disposition（違反時に提示する始末のしかた）", Changes: changes})
 	}
+	if changes := diffSeverity(local.Severity, tmpl.Severity); len(changes) > 0 {
+		out = append(out, Section{Title: "severity（違反ごとの強制の強度。書かれていない id は enforce）", Changes: changes})
+	}
 	if changes := diffRules(local.Rules, tmpl.Rules); len(changes) > 0 {
 		out = append(out, Section{Title: "rules（層2 の語彙。プリセットは出発点で、消すのも足すのも自由）", Changes: changes})
 	}
@@ -285,21 +288,8 @@ func diffAllow(key, p string, l, t Allow) []Change {
 // diffMap は、文言の差を「違う」とだけ告げる。中身まで並べないのは、disposition が段落で書かれる
 // ためで、両方を全文並べても読めない。
 func diffMap(key string, l, t map[string]string) []Change {
-	seen := map[string]bool{}
-	var keys []string
-	for k := range l {
-		keys = append(keys, k)
-		seen[k] = true
-	}
-	for k := range t {
-		if !seen[k] {
-			keys = append(keys, k)
-		}
-	}
-	sort.Strings(keys)
-
 	var changes []Change
-	for _, k := range keys {
+	for _, k := range unionKeys(l, t) {
 		lv, tv := strings.TrimSpace(l[k]), strings.TrimSpace(t[k])
 		if lv == tv {
 			continue
@@ -318,6 +308,43 @@ func diffMap(key string, l, t map[string]string) []Change {
 		changes = append(changes, ch)
 	}
 	return changes
+}
+
+// diffSeverity は、強度の差を値ごと並べる。diffMap が「違う」とだけ告げるのに対してこちらが
+// 値を見せるのは、強度が enforce / advisory の2語しかないため——並べても読めるし、どちらへ
+// 転ぶかは CI の赤/緑そのものなので、読み手は値を見ないと取り込むかを決められない。
+func diffSeverity(l, t map[string]string) []Change {
+	var changes []Change
+	for _, k := range unionKeys(l, t) {
+		lv, tv := l[k], t[k]
+		if lv == tv {
+			continue
+		}
+		ch := Change{Key: "severity." + k, Local: lv, Tmpl: tv, Text: field(k, lv, tv)}
+		switch {
+		case lv == "":
+			ch.Only = "template"
+		case tv == "":
+			ch.Only = "local"
+		}
+		changes = append(changes, ch)
+	}
+	return changes
+}
+
+// unionKeys は、両方の map のキーを重複なく集めて並べる。
+func unionKeys(l, t map[string]string) []string {
+	var keys []string
+	for k := range l {
+		keys = append(keys, k)
+	}
+	for k := range t {
+		if _, ok := l[k]; !ok {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func diffRules(l, t []Rule) []Change {
