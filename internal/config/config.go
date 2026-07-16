@@ -177,11 +177,35 @@ type Rule struct {
 
 // Where は層2 のルールの適用範囲。省略した軸は絞らない。
 type Where struct {
+	// Syntax は、絞り込む syntax エントリ名（と予約値 text）。! 始まりで除外。
 	Syntax []string `yaml:"syntax"`
-	Kind   []string `yaml:"kind"`
+
+	Kind []string `yaml:"kind"`
 
 	// Path は、絞り込むパスの glob。! 始まりで除外。
 	Path []string `yaml:"path"`
+}
+
+// SelectsSyntax は、where.syntax がその面を選ぶかを見る。「!」始まりは除外であり、正のエントリに
+// 当たっていても除外に当たれば落とす（除外がいつも勝つので、並べる順は結果を変えない）。除外だけを
+// 並べた並び（["!text"]）は、それ以外のすべてを選ぶ——syntax の値域は syntax: のキーと予約値 text で
+// 閉じているので、「これ以外」が曖昧さなく決まる。where.path の glob は開いた空間なので、除外だけの
+// 並びは何も選ばない（glob.Selects）。
+func (w Where) SelectsSyntax(name string) bool {
+	positives := 0
+	for _, s := range w.Syntax {
+		if ex, ok := strings.CutPrefix(s, "!"); ok {
+			if ex == name {
+				return false
+			}
+			continue
+		}
+		positives++
+	}
+	if positives == 0 {
+		return true
+	}
+	return slices.Contains(w.Syntax, name)
 }
 
 // FamilyOf は、syntax エントリ name のファミリ。family: を省いたエントリは、キーがファミリ名
@@ -281,11 +305,12 @@ func (c *Config) validate() []string {
 			c.Rules[i].Regexp = re
 		}
 		for _, s := range r.Where.Syntax {
-			if s == SyntaxText {
+			name, _ := strings.CutPrefix(s, "!")
+			if name == SyntaxText {
 				continue
 			}
-			if _, ok := c.Syntax[s]; !ok {
-				add("%s.where.syntax: %q is not a name in syntax: (%q is the reserved name for input that needs no extraction)", at, s, SyntaxText)
+			if _, ok := c.Syntax[name]; !ok {
+				add("%s.where.syntax: %q is not a name in syntax: (%q is the reserved name for input that needs no extraction)", at, name, SyntaxText)
 			}
 		}
 		for _, k := range r.Where.Kind {

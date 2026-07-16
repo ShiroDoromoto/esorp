@@ -104,12 +104,12 @@ func TestLoadTemplate(t *testing.T) {
 	if !ref.Regexp.MatchString("closes #123") {
 		t.Error("internal-ref が追跡番号に当たらない")
 	}
-	if slices.Contains(ref.Where.Syntax, SyntaxText) {
+	if ref.Where.SelectsSyntax(SyntaxText) {
 		t.Errorf("internal-ref.where.syntax = %v, want text 抜き（参照の正しい行き先を塞がない）", ref.Where.Syntax)
 	}
-	for _, s := range ref.Where.Syntax {
-		if _, ok := cfg.Syntax[s]; !ok {
-			t.Errorf("internal-ref.where.syntax の %q が syntax: に無い", s)
+	for _, name := range slices.Sorted(maps.Keys(cfg.Syntax)) {
+		if !ref.Where.SelectsSyntax(name) {
+			t.Errorf("internal-ref.where.syntax = %v, want %q を選ぶ（列挙すると、案内どおりに syntax: を削った設定が exit 2 で壊れる）", ref.Where.Syntax, name)
 		}
 	}
 }
@@ -193,6 +193,35 @@ rules:
 	}
 	if got := cfg.Rules[0].Where.Syntax; !slices.Contains(got, SyntaxText) {
 		t.Errorf("where.syntax = %v, want %q を含む", got, SyntaxText)
+	}
+}
+
+// TestLoadRuleWhereSyntaxExcludeOnly は、除外だけの並びが通り、「それ以外すべて」を選ぶことを見る。
+// where.path は正の glob が0本だとエラーだが、syntax の値域は syntax: のキーと予約値 text で閉じて
+// いるので、「これ以外」が曖昧さなく決まる。ここを path に揃えて塞ぐと、text を外す唯一の手が
+// 消える（init テンプレートの internal-ref がそれを使う）。
+func TestLoadRuleWhereSyntaxExcludeOnly(t *testing.T) {
+	cfg, err := load(t, `
+syntax:
+  cstyle:
+    files: ["**/*.go"]
+    mode: content-only
+rules:
+  - id: internal-ref
+    pattern: '#\d+'
+    message: "追跡番号への参照です"
+    where:
+      syntax: ["!text"]
+`)
+	if err != nil {
+		t.Fatalf("読めない: %v", err)
+	}
+	w := cfg.Rules[0].Where
+	if w.SelectsSyntax(SyntaxText) {
+		t.Errorf("SelectsSyntax(%q) = true, want false", SyntaxText)
+	}
+	if !w.SelectsSyntax("cstyle") {
+		t.Error("SelectsSyntax(\"cstyle\") = false, want true（除外だけの並びは、それ以外すべてを選ぶ）")
 	}
 }
 
@@ -302,6 +331,11 @@ func TestLoadErrors(t *testing.T) {
 		{
 			name: "where.syntax が syntax に無い名前",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nrules:\n  - id: r\n    pattern: a\n    message: x\n    where:\n      syntax: [hash]\n",
+			want: "is not a name in syntax:",
+		},
+		{
+			name: "where.syntax の除外も syntax に在る名前でなければならない",
+			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nrules:\n  - id: r\n    pattern: a\n    message: x\n    where:\n      syntax: [\"!hash\"]\n",
 			want: "is not a name in syntax:",
 		},
 		{

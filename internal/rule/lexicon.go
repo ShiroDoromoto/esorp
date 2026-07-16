@@ -58,13 +58,14 @@ func Lexicon(c place.Comment, rules []config.Rule, t Target, spec scan.LangSpec)
 }
 
 // applies は、ルールの where: がこのコメントに届くかを見る。省略した軸は絞らない（where.syntax を
-// 省いたルールは、取り出しの無い入力にも当たる——共有が既定で、例外だけ宣言する）。
+// 省いたルールは、取り出しの無い入力にも当たる——共有が既定で、例外だけ宣言する）。text だけを外す
+// なら where.syntax: ["!text"] と書く。
 // 取り出しの無い入力を絞れる軸は syntax だけで、kind（コメントの種別）も path（ファイル）も、
 // その入力には存在しない。無い軸で絞ったルールは当たらない——持っていない性質に対して絞りを
 // 黙って無視すると、設定に書いた絞りが効かないモードが生まれる。
 func applies(r config.Rule, c place.Comment, t Target) bool {
 	w := r.Where
-	if len(w.Syntax) > 0 && !slices.Contains(w.Syntax, t.Syntax) {
+	if !w.SelectsSyntax(t.Syntax) {
 		return false
 	}
 	text := t.Syntax == config.SyntaxText

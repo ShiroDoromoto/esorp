@@ -97,11 +97,16 @@ func TestLexiconWhere(t *testing.T) {
 		{"path に当たる", config.Where{Path: []string{"internal/**"}}, doc, 1},
 		{"path が違う", config.Where{Path: []string{"cmd/**"}}, doc, 0},
 		{"path の除外はいつも勝つ", config.Where{Path: []string{"**/*.go", "!internal/**"}}, doc, 0},
+		{"syntax の除外に当たる", config.Where{Syntax: []string{"!cstyle"}}, doc, 0},
+		{"syntax の除外に当たらない", config.Where{Syntax: []string{"!hash"}}, doc, 1},
+		{"syntax の除外はいつも勝つ", config.Where{Syntax: []string{"cstyle", "!cstyle"}}, doc, 0},
 
 		{"省略時は text にも当たる", config.Where{}, text, 1},
 		{"syntax: [text] は text に当たる", config.Where{Syntax: []string{config.SyntaxText}}, text, 1},
 		{"ファミリで絞ったルールは text に当たらない", config.Where{Syntax: []string{"cstyle", "hash"}}, text, 0},
 		{"syntax: [text] はファイルの面に当たらない", config.Where{Syntax: []string{config.SyntaxText}}, doc, 0},
+		{"syntax: [!text] は text を外す", config.Where{Syntax: []string{"!" + config.SyntaxText}}, text, 0},
+		{"syntax: [!text] はそれ以外に当たる", config.Where{Syntax: []string{"!" + config.SyntaxText}}, doc, 1},
 		{"path を書いたルールは text に当たらない", config.Where{Path: []string{"**"}}, text, 0},
 		{"kind を書いたルールは text に当たらない", config.Where{Kind: []string{"line"}}, text, 0},
 	}
