@@ -245,7 +245,7 @@ func TestLoadErrors(t *testing.T) {
 		{
 			name: "未知の位置クラス",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\n    allow:\n      - place: docs\n",
-			want: "不明な位置クラス",
+			want: "not a known place class",
 		},
 		{
 			name: "未知の mode",
@@ -255,17 +255,17 @@ func TestLoadErrors(t *testing.T) {
 		{
 			name: "字句の無いファミリ",
 			body: "syntax:\n  lisp:\n    files: [\"**/*.el\"]\n    mode: content-only\n",
-			want: "スキャナがありません",
+			want: "there is no scanner that reads",
 		},
 		{
 			name: "無い字句を名指しする lang",
 			body: "syntax:\n  cstyle:\n    lang: golang\n    files: [\"**/*.go\"]\n    mode: content-only\n",
-			want: "という字句はありません",
+			want: "there is no lexer named",
 		},
 		{
 			name: "ファミリと食い違う lang",
 			body: "syntax:\n  hash:\n    lang: go\n    files: [\"**/*.sh\"]\n    mode: content-only\n",
-			want: "食い違います",
+			want: "contradicts family:",
 		},
 		{
 			name: "content-only に allow は書けない",
@@ -280,72 +280,72 @@ func TestLoadErrors(t *testing.T) {
 		{
 			name: "不正な glob は、黙って何にも当たらないままにしない",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\", \"src/[.go\"]\n    mode: structural\n",
-			want: "glob として不正",
+			want: "is not a valid glob",
 		},
 		{
 			name: "除外だけでは何も拾わない",
 			body: "syntax:\n  cstyle:\n    files: [\"!vendor/**\"]\n    mode: structural\n",
-			want: "除外",
+			want: "exclusions alone",
 		},
 		{
 			name: "subject は doc のときだけ",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\n    allow:\n      - place: trailing\n        form:\n          subject: required\n",
-			want: "place: doc のときだけ",
+			want: "can only be given under place: doc",
 		},
 		{
 			name: "正規表現が不正",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nrules:\n  - id: bad\n    pattern: \"(\"\n    message: x\n",
-			want: "正規表現が不正",
+			want: "invalid regular expression",
 		},
 		{
 			name: "rules の id が重複",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nrules:\n  - id: dup\n    pattern: a\n    message: x\n  - id: dup\n    pattern: b\n    message: y\n",
-			want: "重複",
+			want: "is a duplicate",
 		},
 		{
 			name: "where.syntax が syntax に無い名前",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nrules:\n  - id: r\n    pattern: a\n    message: x\n    where:\n      syntax: [hash]\n",
-			want: "syntax: に無い名前",
+			want: "is not a name in syntax:",
 		},
 		{
 			name: "syntax に text エントリは書けない",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\n  text:\n    files: [\"**/*.txt\"]\n    mode: content-only\n",
-			want: "予約値",
+			want: "reserved name",
 		},
 		{
 			name: "rules の id が層1 の違反 id と衝突",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nrules:\n  - id: form-headings\n    pattern: a\n    message: x\n",
-			want: "層1 の違反 id",
+			want: "is a layer 1 violation id",
 		},
 		{
 			name: "where.path の glob が不正",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nrules:\n  - id: r\n    pattern: a\n    message: x\n    where:\n      path: [\"src/[.go\"]\n",
-			want: "glob として不正",
+			want: "is not a valid glob",
 		},
 		{
 			name: "where.path が除外だけでは何にも当たらない",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nrules:\n  - id: r\n    pattern: a\n    message: x\n    where:\n      path: [\"!vendor/**\"]\n",
-			want: "除外",
+			want: "exclusions alone",
 		},
 		{
 			name: "disposition の違反 id が不明",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\ndisposition:\n  place-not-allowd: x\n",
-			want: "不明な違反 id",
+			want: "not a known violation id",
 		},
 		{
 			name: "severity の違反 id が不明",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nseverity:\n  place-not-allowd: advisory\n",
-			want: "不明な違反 id",
+			want: "not a known violation id",
 		},
 		{
 			name: "severity の値が enforce / advisory ではない",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nseverity:\n  form-refs: warn\n",
-			want: "不明な強度",
+			want: "is not a known strength",
 		},
 		{
 			name: "severity は off を持たない",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nseverity:\n  form-refs: off\n",
-			want: "不明な強度",
+			want: "is not a known strength",
 		},
 		{
 			name: "syntax が空",
@@ -355,37 +355,37 @@ func TestLoadErrors(t *testing.T) {
 		{
 			name: "段落数の上限が 0",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\n    allow:\n      - place: doc\n        form:\n          paragraphs: 0\n",
-			want: "段落数の上限",
+			want: "cap on the number of paragraphs",
 		},
 		{
 			name: "comments は structural には書けない",
 			body: "syntax:\n  nsis:\n    files: [\"**/*.nsh\"]\n    mode: structural\n    comments:\n      line: [\";\"]\n",
-			want: "content-only のときだけ",
+			want: "can only be declared under mode: content-only",
 		},
 		{
 			name: "comments と lang は併記できない",
 			body: "syntax:\n  nsis:\n    lang: shell\n    files: [\"**/*.nsh\"]\n    mode: content-only\n    comments:\n      line: [\";\"]\n",
-			want: "lang: とは併記できません",
+			want: "cannot be written alongside lang:",
 		},
 		{
 			name: "comments と family は併記できない",
 			body: "syntax:\n  nsis:\n    family: hash\n    files: [\"**/*.nsh\"]\n    mode: content-only\n    comments:\n      line: [\";\"]\n",
-			want: "family: とは併記できません",
+			want: "cannot be written alongside family:",
 		},
 		{
 			name: "block の対は開きと閉じの2つ",
 			body: "syntax:\n  nsis:\n    files: [\"**/*.nsh\"]\n    mode: content-only\n    comments:\n      block: [[\"/*\"]]\n",
-			want: "開きと閉じの2つ",
+			want: "the opener and the closer",
 		},
 		{
 			name: "block の開き・閉じは空にできない",
 			body: "syntax:\n  nsis:\n    files: [\"**/*.nsh\"]\n    mode: content-only\n    comments:\n      block: [[\"/*\", \"\"]]\n",
-			want: "空にはできません",
+			want: "neither the opener nor the closer can be empty",
 		},
 		{
 			name: "line の記号は空にできない",
 			body: "syntax:\n  nsis:\n    files: [\"**/*.nsh\"]\n    mode: content-only\n    comments:\n      line: [\"\"]\n",
-			want: "空の記号は書けません",
+			want: "an empty marker cannot be written",
 		},
 	}
 

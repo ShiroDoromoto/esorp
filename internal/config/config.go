@@ -203,7 +203,7 @@ type Error struct {
 
 func (e *Error) Error() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s: 設定エラー", e.Path)
+	fmt.Fprintf(&b, "%s: config error", e.Path)
 	for _, p := range e.Problems {
 		b.WriteString("\n  ")
 		b.WriteString(p)
@@ -223,7 +223,7 @@ func Load(path string) (*Config, error) {
 // TemplateConfig は、esorp init が生成するテンプレートを設定として読む。init --diff が、手元の
 // 設定と比べる相手として使う。
 func TemplateConfig() (*Config, error) {
-	return parse([]byte(Template), "テンプレート")
+	return parse([]byte(Template), "template")
 }
 
 func parse(data []byte, path string) (*Config, error) {
@@ -245,14 +245,14 @@ func (c *Config) validate() []string {
 	}
 
 	if len(c.Syntax) == 0 {
-		add("syntax: が空です。検査するファイルがありません")
+		add("syntax: is empty, so there is nothing to inspect")
 	}
 	if c.Review != nil && strings.TrimSpace(c.Review.Question) == "" {
-		add("review.question: 必須です。問いが無いなら、review: ごと消してください（層3 は開きません）")
+		add("review.question: required. With no question, drop review: entirely (layer 3 stays shut)")
 	}
 	for _, name := range slices.Sorted(maps.Keys(c.Syntax)) {
 		if name == SyntaxText {
-			add("syntax.%s: %q は取り出しの無い入力を指す予約値です。files を持たない入力なので、拾うエントリは書けません（ルールを絞るなら where.syntax: [%s]）", name, SyntaxText, SyntaxText)
+			add("syntax.%s: %q is the reserved name for input that needs no extraction. It has no files to pick up, so it cannot be an entry here (to narrow a rule to it, write where.syntax: [%s])", name, SyntaxText, SyntaxText)
 			continue
 		}
 		validateSyntax(name, c.FamilyOf(name), c.Syntax[name], add)
@@ -263,21 +263,21 @@ func (c *Config) validate() []string {
 		at := fmt.Sprintf("rules[%d]", i)
 		switch {
 		case r.ID == "":
-			add("%s.id: 必須です", at)
+			add("%s.id: required", at)
 		case seen[r.ID]:
-			add("%s.id: %q が重複しています", at, r.ID)
+			add("%s.id: %q is a duplicate", at, r.ID)
 		case slices.Contains(knownViolations, r.ID):
-			add("%s.id: %q は層1 の違反 id です。baseline も disposition も id で引くので、重ねられません", at, r.ID)
+			add("%s.id: %q is a layer 1 violation id. Both baseline and disposition look up by id, so the two cannot share one", at, r.ID)
 		default:
 			seen[r.ID] = true
 		}
 		if r.Message == "" {
-			add("%s.message: 必須です（違反時に提示する始末のしかた）", at)
+			add("%s.message: required (what to do about the violation)", at)
 		}
 		if r.Pattern == "" {
-			add("%s.pattern: 必須です", at)
+			add("%s.pattern: required", at)
 		} else if re, err := regexp.Compile(r.Pattern); err != nil {
-			add("%s.pattern: 正規表現が不正です: %v", at, err)
+			add("%s.pattern: invalid regular expression: %v", at, err)
 		} else {
 			c.Rules[i].Regexp = re
 		}
@@ -286,12 +286,12 @@ func (c *Config) validate() []string {
 				continue
 			}
 			if _, ok := c.Syntax[s]; !ok {
-				add("%s.where.syntax: %q は syntax: に無い名前です（%q は取り出しの無い入力を指す予約値）", at, s, SyntaxText)
+				add("%s.where.syntax: %q is not a name in syntax: (%q is the reserved name for input that needs no extraction)", at, s, SyntaxText)
 			}
 		}
 		for _, k := range r.Where.Kind {
 			if _, ok := scan.ParseKind(k); !ok {
-				add("%s.where.kind: %q は不明な kind です", at, k)
+				add("%s.where.kind: %q is not a known kind", at, k)
 			}
 		}
 		if len(r.Where.Path) > 0 {
@@ -301,16 +301,16 @@ func (c *Config) validate() []string {
 
 	for _, id := range slices.Sorted(maps.Keys(c.Disposition)) {
 		if !slices.Contains(knownViolations, id) {
-			add("disposition.%s: 不明な違反 id です（%s）", id, strings.Join(knownViolations, " / "))
+			add("disposition.%s: not a known violation id (%s)", id, strings.Join(knownViolations, " / "))
 		}
 	}
 
 	for _, id := range slices.Sorted(maps.Keys(c.Severity)) {
 		if !slices.Contains(knownViolations, id) && !seen[id] {
-			add("severity.%s: 不明な違反 id です（層1 の %s、または rules[].id）", id, strings.Join(knownViolations, " / "))
+			add("severity.%s: not a known violation id (layer 1: %s, or a rules[].id)", id, strings.Join(knownViolations, " / "))
 		}
 		if v := c.Severity[id]; !slices.Contains(knownSeverities, v) {
-			add("severity.%s: %q は不明な強度です（%s）", id, v, strings.Join(knownSeverities, " / "))
+			add("severity.%s: %q is not a known strength (%s)", id, v, strings.Join(knownSeverities, " / "))
 		}
 	}
 	return problems
@@ -323,7 +323,7 @@ func validateSyntax(name, family string, s Syntax, add func(string, ...any)) {
 		validateComments(at, s, add)
 	} else {
 		if !slices.Contains(knownFamilies, family) {
-			add("%s.family: %q を読むスキャナがありません（今あるのは %s）", at, family, strings.Join(knownFamilies, " / "))
+			add("%s.family: there is no scanner that reads %q (what exists today: %s)", at, family, strings.Join(knownFamilies, " / "))
 		}
 		validateLang(at, family, s.Lang, add)
 	}
@@ -336,12 +336,12 @@ func validateSyntax(name, family string, s Syntax, add func(string, ...any)) {
 		}
 	case "content-only":
 		if len(s.Allow) > 0 {
-			add("%s.allow: mode: content-only では器を問わないので、書けません", at)
+			add("%s.allow: mode: content-only does not ask which vessel a comment is in, so this cannot be written", at)
 		}
 	case "":
-		add("%s.mode: 必須です（structural | content-only）", at)
+		add("%s.mode: required (structural | content-only)", at)
 	default:
-		add("%s.mode: %q は不明です（structural | content-only）", at, s.Mode)
+		add("%s.mode: %q is not known (structural | content-only)", at, s.Mode)
 	}
 }
 
@@ -354,11 +354,11 @@ func validateLang(at, family, lang string, add func(string, ...any)) {
 	}
 	f, ok := scan.LangFamily(lang)
 	if !ok {
-		add("%s.lang: %q という字句はありません（今あるのは %s）", at, lang, strings.Join(scan.LangNames(), " / "))
+		add("%s.lang: there is no lexer named %q (what exists today: %s)", at, lang, strings.Join(scan.LangNames(), " / "))
 		return
 	}
 	if f != family {
-		add("%s.lang: %q は %s ファミリの字句です（family: %s と食い違います）", at, lang, f, family)
+		add("%s.lang: %q is a lexer of the %s family, which contradicts family: %s", at, lang, f, family)
 	}
 }
 
@@ -367,26 +367,26 @@ func validateLang(at, family, lang string, add func(string, ...any)) {
 // 宣言で、食い違う）。ブロックの対は開きと閉じの2つで、どちらも空にはできない。
 func validateComments(at string, s Syntax, add func(string, ...any)) {
 	if s.Mode != "" && s.Mode != "content-only" {
-		add("%s.comments: mode: content-only のときだけ宣言できます（structural は器の判定に宣言の解析が要ります）", at)
+		add("%s.comments: can only be declared under mode: content-only (structural needs a parse of the declarations to tell vessels apart)", at)
 	}
 	if s.Lang != "" {
-		add("%s.comments: lang: とは併記できません（どちらも読み方の宣言で、食い違います）", at)
+		add("%s.comments: cannot be written alongside lang: (both declare how to read, and they contradict)", at)
 	}
 	if s.Family != "" {
-		add("%s.comments: family: とは併記できません（comments: が読み方を決めるので、family は効きません）", at)
+		add("%s.comments: cannot be written alongside family: (comments: decides how to read, so family has no effect)", at)
 	}
 	for i, l := range s.Comments.Line {
 		if l == "" {
-			add("%s.comments.line[%d]: 空の記号は書けません", at, i)
+			add("%s.comments.line[%d]: an empty marker cannot be written", at, i)
 		}
 	}
 	for i, b := range s.Comments.Block {
 		if len(b) != 2 {
-			add(`%s.comments.block[%d]: 開きと閉じの2つで書きます（["/*", "*/"]）`, at, i)
+			add(`%s.comments.block[%d]: written as the opener and the closer, the two of them (["/*", "*/"])`, at, i)
 			continue
 		}
 		if b[0] == "" || b[1] == "" {
-			add("%s.comments.block[%d]: 開きも閉じも空にはできません", at, i)
+			add("%s.comments.block[%d]: neither the opener nor the closer can be empty", at, i)
 		}
 	}
 }
@@ -394,7 +394,7 @@ func validateComments(at string, s Syntax, add func(string, ...any)) {
 // validateFiles は files: の glob を検める。
 func validateFiles(at string, files []string, add func(string, ...any)) {
 	if len(files) == 0 {
-		add("%s.files: 必須です（このファミリのスキャナで読むファイルの glob）", at)
+		add("%s.files: required (the globs of the files this entry's scanner reads)", at)
 		return
 	}
 	validateGlobs(at+".files", files, add)
@@ -409,34 +409,34 @@ func validateGlobs(at string, globs []string, add func(string, ...any)) {
 		pat, excluded := strings.CutPrefix(g, "!")
 		switch {
 		case pat == "":
-			add("%s[%d]: 空の glob です", at, i)
+			add("%s[%d]: an empty glob", at, i)
 		case !glob.Valid(pat):
-			add("%s[%d]: %q は glob として不正です", at, i, g)
+			add("%s[%d]: %q is not a valid glob", at, i, g)
 		case !excluded:
 			positives++
 		}
 	}
 	if positives == 0 {
-		add(`%s: 除外（! 始まり）だけでは、どのファイルにも当たりません（全体から除くなら "**" を併せて書きます）`, at)
+		add(`%s: exclusions alone (the ones starting with !) match no file at all (to carve them out of everything, write "**" alongside)`, at)
 	}
 }
 
 func validateAllow(at string, a Allow, add func(string, ...any)) {
 	p, ok := place.Parse(a.Place)
 	if a.Place == "" {
-		add("%s.place: 必須です", at)
+		add("%s.place: required", at)
 	} else if !ok {
-		add("%s.place: %q は不明な位置クラスです（header / doc / trailing / leading / orphan）", at, a.Place)
+		add("%s.place: %q is not a known place class (header / doc / trailing / leading / orphan)", at, a.Place)
 	}
 
 	for _, k := range a.Kind {
 		if _, ok := scan.ParseKind(k); !ok {
-			add("%s.kind: %q は不明な kind です（line / block / docline / docblock）", at, k)
+			add("%s.kind: %q is not a known kind (line / block / docline / docblock)", at, k)
 		}
 	}
 	for _, l := range a.Label {
 		if l == "" {
-			add("%s.label: 空のラベルは書けません", at)
+			add("%s.label: an empty label cannot be written", at)
 		}
 	}
 
@@ -446,9 +446,9 @@ func validateAllow(at string, a Allow, add func(string, ...any)) {
 	f := a.Form
 	if f.Subject != "" {
 		if !slices.Contains([]string{"required", "off"}, f.Subject) {
-			add("%s.form.subject: %q は不明です（required | off）", at, f.Subject)
+			add("%s.form.subject: %q is not known (required | off)", at, f.Subject)
 		} else if ok && p != place.Doc {
-			add("%s.form.subject: place: doc のときだけ指定できます（紐づく宣言が無ければ、名前で始まるかを判定できません）", at)
+			add("%s.form.subject: can only be given under place: doc (with no declaration attached, there is no name to check the first line against)", at)
 		}
 	}
 	for _, sw := range []struct {
@@ -458,14 +458,14 @@ func validateAllow(at string, a Allow, add func(string, ...any)) {
 		{"urls", f.URLs},
 	} {
 		if sw.val != "" && !slices.Contains([]string{"deny", "allow"}, sw.val) {
-			add("%s.form.%s: %q は不明です（deny | allow）", at, sw.key, sw.val)
+			add("%s.form.%s: %q is not known (deny | allow)", at, sw.key, sw.val)
 		}
 	}
 	if f.Paragraphs != nil && *f.Paragraphs < 1 {
-		add("%s.form.paragraphs: %d は段落数の上限になりません（1 以上）", at, *f.Paragraphs)
+		add("%s.form.paragraphs: %d cannot be a cap on the number of paragraphs (1 or more)", at, *f.Paragraphs)
 	}
 	if f.MaxLines != nil && *f.MaxLines < 1 {
-		add("%s.form.max_lines: %d は行数の上限になりません（1 以上）", at, *f.MaxLines)
+		add("%s.form.max_lines: %d cannot be a cap on the number of lines (1 or more)", at, *f.MaxLines)
 	}
 }
 

@@ -47,35 +47,35 @@ func Diff(local, tmpl *Config) []Section {
 		if len(changes) == 0 {
 			continue
 		}
-		title := fmt.Sprintf("syntax.%s（テンプレートの %s と対応）", p.local, p.tmpl)
+		title := fmt.Sprintf("syntax.%s (paired with %s in the template)", p.local, p.tmpl)
 		out = append(out, Section{Title: title, Changes: changes})
 	}
 
 	if len(onlyTmpl) > 0 {
 		out = append(out, Section{
-			Title:   "テンプレートだけにある syntax エントリ（使わない言語なら、無いままで構いません）",
+			Title:   "syntax entries only in the template (for a language you do not use, not having it is fine)",
 			Changes: onlySyntax(tmpl, onlyTmpl, "template"),
 		})
 	}
 	if len(onlyLocal) > 0 {
 		out = append(out, Section{
-			Title:   "手元だけにある syntax エントリ（あなたが足したもの）",
+			Title:   "syntax entries only in yours (ones you added)",
 			Changes: onlySyntax(local, onlyLocal, "local"),
 		})
 	}
 
 	if changes := diffFiles(local, tmpl); len(changes) > 0 {
-		out = append(out, Section{Title: "見にいくファイル", Changes: changes})
+		out = append(out, Section{Title: "the files being looked at", Changes: changes})
 	}
 
 	if changes := diffMap("disposition", local.Disposition, tmpl.Disposition); len(changes) > 0 {
-		out = append(out, Section{Title: "disposition（違反時に提示する始末のしかた）", Changes: changes})
+		out = append(out, Section{Title: "disposition (what to do about a violation)", Changes: changes})
 	}
 	if changes := diffSeverity(local.Severity, tmpl.Severity); len(changes) > 0 {
-		out = append(out, Section{Title: "severity（違反ごとの強制の強度。書かれていない id は enforce）", Changes: changes})
+		out = append(out, Section{Title: "severity (how hard each violation is enforced. An id not written down is enforce)", Changes: changes})
 	}
 	if changes := diffRules(local.Rules, tmpl.Rules); len(changes) > 0 {
-		out = append(out, Section{Title: "rules（層2 の語彙。プリセットは出発点で、消すのも足すのも自由）", Changes: changes})
+		out = append(out, Section{Title: "rules (the layer 2 lexicon. The presets are a starting point — drop them or add to them freely)", Changes: changes})
 	}
 
 	var misc []Change
@@ -87,7 +87,7 @@ func Diff(local, tmpl *Config) []Section {
 		misc = append(misc, changed("baseline", "baseline", local.Baseline, tmpl.Baseline))
 	}
 	if len(misc) > 0 {
-		out = append(out, Section{Title: "その他", Changes: misc})
+		out = append(out, Section{Title: "the rest", Changes: misc})
 	}
 
 	return out
@@ -195,7 +195,7 @@ func diffFiles(local, tmpl *Config) []Change {
 			Key:  "files",
 			Only: "template",
 			Tmpl: strings.Join(add, " "),
-			Text: "テンプレートだけ: " + strings.Join(add, " "),
+			Text: "template only: " + strings.Join(add, " "),
 		})
 	}
 	if len(del) > 0 {
@@ -203,7 +203,7 @@ func diffFiles(local, tmpl *Config) []Change {
 			Key:   "files",
 			Only:  "local",
 			Local: strings.Join(del, " "),
-			Text:  "手元だけ: " + strings.Join(del, " "),
+			Text:  "yours only: " + strings.Join(del, " "),
 		})
 	}
 	return changes
@@ -229,13 +229,13 @@ func diffSyntax(key string, l, t Syntax) []Change {
 			changes = append(changes, Change{
 				Key:  key + "." + allow,
 				Only: "template",
-				Text: allow + "  テンプレートだけにあります（この器を許可していません）",
+				Text: allow + "  in the template only (you do not allow this vessel)",
 			})
 		case !inTmpl:
 			changes = append(changes, Change{
 				Key:  key + "." + allow,
 				Only: "local",
-				Text: allow + "  手元だけにあります（テンプレートは、この器を許可しません）",
+				Text: allow + "  in yours only (the template does not allow this vessel)",
 			})
 		default:
 			changes = append(changes, diffAllow(key, p, la, ta)...)
@@ -298,12 +298,12 @@ func diffMap(key string, l, t map[string]string) []Change {
 		switch {
 		case lv == "":
 			ch.Only = "template"
-			ch.Text = fmt.Sprintf("%s  テンプレートだけにあります", k)
+			ch.Text = fmt.Sprintf("%s  in the template only", k)
 		case tv == "":
 			ch.Only = "local"
-			ch.Text = fmt.Sprintf("%s  手元だけにあります", k)
+			ch.Text = fmt.Sprintf("%s  in yours only", k)
 		default:
-			ch.Text = fmt.Sprintf("%s  文言が違います", k)
+			ch.Text = fmt.Sprintf("%s  the wording differs", k)
 		}
 		changes = append(changes, ch)
 	}
@@ -364,7 +364,7 @@ func diffRules(l, t []Rule) []Change {
 				Key:  "rules." + r.ID,
 				Only: "template",
 				Tmpl: r.Pattern,
-				Text: fmt.Sprintf("%s  テンプレートだけにあります: %s", r.ID, r.Pattern),
+				Text: fmt.Sprintf("%s  in the template only: %s", r.ID, r.Pattern),
 			})
 		}
 	}
@@ -375,7 +375,7 @@ func diffRules(l, t []Rule) []Change {
 				Key:   "rules." + r.ID,
 				Only:  "local",
 				Local: r.Pattern,
-				Text:  fmt.Sprintf("%s  手元だけにあります（あなたの選択）: %s", r.ID, r.Pattern),
+				Text:  fmt.Sprintf("%s  in yours only (your choice): %s", r.ID, r.Pattern),
 			})
 			continue
 		}
@@ -386,15 +386,15 @@ func diffRules(l, t []Rule) []Change {
 	return changes
 }
 
-// field は、1つの値の差を「手元 / テンプレート」の並びで出す。空の値は「（無し）」と書く——
+// field は、1つの値の差を「手元 / テンプレート」の並びで出す。空の値は「(none)」と書く——
 // 値が違うのか、そもそも書かれていないのかは、取り込むかどうかの判断で意味が変わる。
 func field(name, local, tmpl string) string {
-	return fmt.Sprintf("%s  手元: %s  テンプレート: %s", name, or(local), or(tmpl))
+	return fmt.Sprintf("%s  yours: %s  template: %s", name, or(local), or(tmpl))
 }
 
 func or(v string) string {
 	if v == "" {
-		return "（無し）"
+		return "(none)"
 	}
 	return v
 }
