@@ -123,6 +123,29 @@ baseline: .esorp-baseline.json
 	}
 }
 
+// TestDiffSeverity は、手元で弱めた強度が差分に出ること、そして値が見えることを確かめる。
+// 強度は CI の赤/緑そのものなので、「違います」では取り込むかを決められない。
+func TestDiffSeverity(t *testing.T) {
+	got := diffOf(t, `
+syntax:
+  cstyle-go:
+    family: cstyle
+    files: ["**/*.go"]
+    mode: structural
+    allow:
+      - place: header
+severity:
+  form-paragraphs: advisory
+`)
+
+	if !strings.Contains(got, "severity") {
+		t.Errorf("severity の節が出ていない:\n%s", got)
+	}
+	if !strings.Contains(got, "advisory") {
+		t.Errorf("手元の強度の値が出ていない:\n%s", got)
+	}
+}
+
 // TestDiffAllowAndRules は、器の有無・書式の値・層2 の語彙の差が出ることを確かめる。
 func TestDiffAllowAndRules(t *testing.T) {
 	got := diffOf(t, `
