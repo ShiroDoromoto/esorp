@@ -359,6 +359,31 @@ func TestLoadErrors(t *testing.T) {
 			want: "exclusions alone",
 		},
 		{
+			name: "where.syntax の同じ名前が正と除外に並ぶ",
+			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nrules:\n  - id: r\n    pattern: a\n    message: x\n    where:\n      syntax: [cstyle, \"!cstyle\"]\n",
+			want: "cancel out",
+		},
+		{
+			name: "打ち消しは、生き残る名前が他に在っても許さない",
+			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\n  hash:\n    files: [\"**/*.yml\"]\n    mode: content-only\nrules:\n  - id: r\n    pattern: a\n    message: x\n    where:\n      syntax: [cstyle, \"!cstyle\", hash]\n",
+			want: "cancel out",
+		},
+		{
+			name: "where.syntax の予約値 text も打ち消せば同じ",
+			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nrules:\n  - id: r\n    pattern: a\n    message: x\n    where:\n      syntax: [text, \"!text\"]\n",
+			want: "cancel out",
+		},
+		{
+			name: "where.path の同じ glob が正と除外に並ぶ",
+			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nrules:\n  - id: r\n    pattern: a\n    message: x\n    where:\n      path: [\"**/*.go\", \"!**/*.go\"]\n",
+			want: "cancel out",
+		},
+		{
+			name: "syntax.files の同じ glob が正と除外に並ぶ",
+			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\", \"!**/*.go\"]\n    mode: structural\n",
+			want: "cancel out",
+		},
+		{
 			name: "disposition の違反 id が不明",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\ndisposition:\n  place-not-allowd: x\n",
 			want: "not a known violation id",

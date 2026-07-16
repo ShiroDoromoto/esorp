@@ -313,6 +313,9 @@ func (c *Config) validate() []string {
 				add("%s.where.syntax: %q is not a name in syntax: (%q is the reserved name for input that needs no extraction)", at, name, SyntaxText)
 			}
 		}
+		for _, s := range cancelsOut(r.Where.Syntax) {
+			add("%s.where.syntax: %q and %q cancel out — the exclusion always wins, so %q is a surface this rule never reaches (drop one of the two)", at, s, "!"+s, s)
+		}
 		for _, k := range r.Where.Kind {
 			if _, ok := scan.ParseKind(k); !ok {
 				add("%s.where.kind: %q is not a known kind", at, k)
@@ -443,6 +446,30 @@ func validateGlobs(at string, globs []string, add func(string, ...any)) {
 	if positives == 0 {
 		add(`%s: exclusions alone (the ones starting with !) match no file at all (to carve them out of everything, write "**" alongside)`, at)
 	}
+	for _, g := range cancelsOut(globs) {
+		add("%s: %q and %q cancel out — the exclusion always wins, so %q picks up no file (drop one of the two)", at, g, "!"+g, g)
+	}
+}
+
+// cancelsOut は、同じ文字列が正と除外の両方に書かれている所を挙げる。除外がいつも勝つので、そう
+// 書かれた要素は決して選ばれない——1つの名前に「当てる」と「当てない」を同時に宣言しており、意図と
+// して読める形が無い。黙って通すと、そのルールは何にも当たらないまま適合したように見える。見るのは
+// 文字列の一致だけで、glob は意味的な包含が一般に判定できないので（"**/*.go" と "!**" は文字列が
+// 違うのに選ぶ相手ゼロ）、そこまでは踏み込まない。
+func cancelsOut(entries []string) []string {
+	excluded := map[string]bool{}
+	for _, e := range entries {
+		if pat, ok := strings.CutPrefix(e, "!"); ok {
+			excluded[pat] = true
+		}
+	}
+	var both []string
+	for _, e := range entries {
+		if !strings.HasPrefix(e, "!") && excluded[e] && !slices.Contains(both, e) {
+			both = append(both, e)
+		}
+	}
+	return both
 }
 
 func validateAllow(at string, a Allow, add func(string, ...any)) {
