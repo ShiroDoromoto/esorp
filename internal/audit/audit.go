@@ -76,6 +76,18 @@ func (r *Result) Entries() []baseline.Entry {
 	return out
 }
 
+// Enforced は、この走査に残った enforce の違反の数。check の終了コードはこれで決まり、advisory の
+// 違反は Findings に残ったまま数から外れる——報告には出るが、CI は落とさない（D-273）。
+func (r *Result) Enforced() int {
+	n := 0
+	for _, f := range r.Findings {
+		if enforces(f.Violation) {
+			n++
+		}
+	}
+	return n
+}
+
 // Suppress は、baseline に載っている違反を Findings から外す。
 func (r *Result) Suppress(b *baseline.Baseline) {
 	kept := r.Findings[:0]
@@ -288,7 +300,7 @@ func auditFile(cfg *config.Config, root string, m matched, sel Selection, res *R
 
 	target := rule.Target{Syntax: m.syntax, Path: m.path}
 	for _, c := range comments {
-		vs := evaluate(c, syn, cfg, target, spec)
+		vs := stamp(evaluate(c, syn, cfg, target, spec), cfg.Severity)
 		for _, v := range vs {
 			add(c, v)
 		}
@@ -331,4 +343,30 @@ func evaluate(c place.Comment, syn config.Syntax, cfg *config.Config, t rule.Tar
 		return fv
 	}
 	return rule.Lexicon(c, cfg.Rules, t, spec)
+}
+
+// stamp は、違反に強制の強度を載せる。強度は当てる側（器・書式・語彙）の判断ではなく、当たった id に
+// 対する設定の宣言なので、判定の中ではなく、違反が出てきた後に1箇所で載せる。
+func stamp(vs []rule.Violation, sev map[string]string) []rule.Violation {
+	for i := range vs {
+		vs[i].Severity = rule.Severity(sev, vs[i].ID)
+	}
+	return vs
+}
+
+// Enforced は、CI を落とす違反——強度が enforce のもの——の数を数える。advisory は報告に出るが、
+// この数には入らない（D-273）。
+func Enforced(vs []rule.Violation) int {
+	n := 0
+	for _, v := range vs {
+		if enforces(v) {
+			n++
+		}
+	}
+	return n
+}
+
+// enforces は、その違反が CI を落とすかを見る。
+func enforces(v rule.Violation) bool {
+	return v.Severity == config.SeverityEnforce
 }

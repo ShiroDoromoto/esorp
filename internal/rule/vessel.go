@@ -34,6 +34,10 @@ type Violation struct {
 
 	Message string
 
+	// Severity は、この違反を止めるか報せるかの強度（config.SeverityEnforce / SeverityAdvisory）。
+	// 設定の severity: 表を違反 id で引いたもので、表に無い id は enforce。
+	Severity string
+
 	// Site は、この違反を決めた設定の場所。
 	Site Site
 
@@ -42,6 +46,15 @@ type Violation struct {
 	// 挟まない読みの片方でしか当たらなかったとき、この当たりは継ぎ目が作った可能性がある——原文には
 	// 直す箇所が無いかもしれない。書き手がそう判断できるよう、報告に添える。
 	SeamDependent bool
+}
+
+// Severity は、設定の severity: 表から違反 id の強度を引く。層1・層2 の id は1つの空間なので、
+// どちらの違反も同じ表で引ける。書かれていない id は enforce——ツールの中に隠れた強度は無い。
+func Severity(sev map[string]string, id string) string {
+	if s, ok := sev[id]; ok {
+		return s
+	}
+	return config.SeverityEnforce
 }
 
 // Site は、違反を決めた設定の場所。違反 id と設定（allow の列挙 / form / rules）は一対一で

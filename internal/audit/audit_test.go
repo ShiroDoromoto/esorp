@@ -251,3 +251,49 @@ func TestRunLexiconWherePath(t *testing.T) {
 		t.Errorf("違反 = %#v, want a.go の1件（internal/ は where.path の除外で外れる）", res.Findings)
 	}
 }
+
+// TestRunSeverity は、層1・層2 のどちらの違反にも設定の強度が載り、severity: に書かれていない id は
+// enforce になることを確かめる。advisory にした違反は Findings に残る（報告には出る）が、Enforced
+// には数えない——CI の赤/緑を決めるのはこの数（D-273）。
+func TestRunSeverity(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "esorp.yaml", "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\n    allow:\n      - place: doc\n"+
+		historyRule+"severity:\n  place-not-allowed: advisory\n")
+
+	write(t, root, "a.go", "package p\n\nfunc F() {\n\t// 文の直前。\n\tx := 1\n\t_ = x\n}\n")
+	write(t, root, "b.go", "package p\n\n// F はかつて同期だった。\nfunc F() {}\n")
+
+	res := run(t, root)
+	want := map[string]string{
+		"place-not-allowed": config.SeverityAdvisory,
+		"no-history":        config.SeverityEnforce,
+	}
+	if len(res.Findings) != len(want) {
+		t.Fatalf("違反 = %d 件, want %d\n%#v", len(res.Findings), len(want), res.Findings)
+	}
+	for _, f := range res.Findings {
+		if got := f.Severity; got != want[f.ID] {
+			t.Errorf("%s の強度 = %q, want %q", f.ID, got, want[f.ID])
+		}
+	}
+	if got := res.Enforced(); got != 1 {
+		t.Errorf("enforce の違反 = %d 件, want 1（advisory は数えない）", got)
+	}
+}
+
+// TestRunSeverityContentOnly は、層1 を飛ばす mode: content-only でも強度が載ることを確かめる。
+// 層1 を通らないだけで、層2 の違反が強度を持たないわけではない。
+func TestRunSeverityContentOnly(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "esorp.yaml", "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: content-only\n"+
+		historyRule+"severity:\n  no-history: advisory\n")
+	write(t, root, "a.go", "package p\n\nfunc F() {\n\t// かつてはこうだった。\n\tx := 1\n\t_ = x\n}\n")
+
+	res := run(t, root)
+	if len(res.Findings) != 1 || res.Findings[0].Severity != config.SeverityAdvisory {
+		t.Fatalf("違反 = %#v, want no-history 1件（advisory）", res.Findings)
+	}
+	if got := res.Enforced(); got != 0 {
+		t.Errorf("enforce の違反 = %d 件, want 0", got)
+	}
+}

@@ -86,6 +86,26 @@ func TestTextFoldsWrappedBody(t *testing.T) {
 	}
 }
 
+// TestTextSeverity は、素の本文に当てた違反にも強度が載ることを確かめる。語彙は esorp.yaml 1つに
+// 保たれるので、強度の表も面をまたいで同じものが効く。Enforced が数えるのは enforce だけ。
+func TestTextSeverity(t *testing.T) {
+	cfg := textConfig(t, config.Where{})
+	body := "この関数はかつて同期だった。"
+
+	if got := Text(cfg, body); len(got) != 1 || got[0].Severity != config.SeverityEnforce || Enforced(got) != 1 {
+		t.Errorf("severity: を書かない設定の違反 = %#v, want enforce 1件（書かれていない id は enforce）", got)
+	}
+
+	cfg.Severity = map[string]string{"no-history": config.SeverityAdvisory}
+	got := Text(cfg, body)
+	if len(got) != 1 || got[0].Severity != config.SeverityAdvisory {
+		t.Fatalf("違反 = %#v, want advisory 1件", got)
+	}
+	if n := Enforced(got); n != 0 {
+		t.Errorf("enforce の違反 = %d 件, want 0（advisory は報告に出るが数えない）", n)
+	}
+}
+
 // TestTextWhere は、面の絞りを見る。取り出しの要らない入力を絞れる軸は syntax だけで、kind も path
 // もその入力には無い。
 func TestTextWhere(t *testing.T) {

@@ -324,7 +324,7 @@ func runCheck(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return exitConfig
 	}
 
-	if len(a.result.Findings) > 0 {
+	if a.result.Enforced() > 0 {
 		return exitViolated
 	}
 	return exitOK
@@ -370,7 +370,7 @@ func runCheckBody(text, configPath, format string, diffMode bool, rest []string,
 		return exitConfig
 	}
 
-	if len(vs) > 0 {
+	if audit.Enforced(vs) > 0 {
 		return exitViolated
 	}
 	return exitOK
@@ -478,6 +478,9 @@ func runExplain(args []string, stdout, stderr io.Writer) int {
 }
 
 // explainCode は、説明した違反の有無を終了コードにする。形式で終了コードは変わらない。
+// check とは違い、強度を見ない——advisory の違反にも exitViolated を返す。explain は門ではなく、
+// 「このコメントは設定に反しているか」への答えであり、その答えは強度で変わらない（advisory は
+// 「反しているが CI は落とさない」であって、「反していない」ではない）。門は check が持つ。
 func explainCode(res *audit.Result) int {
 	if len(res.Findings) > 0 {
 		return exitViolated
