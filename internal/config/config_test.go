@@ -339,6 +339,11 @@ func TestLoadErrors(t *testing.T) {
 			want: "is not a name in syntax:",
 		},
 		{
+			name: "where.kind の「!」は、綴りではなく除外の口が無いことを言う",
+			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\nrules:\n  - id: r\n    pattern: a\n    message: x\n    where:\n      kind: [\"!line\"]\n",
+			want: "kind has no exclusion",
+		},
+		{
 			name: "syntax に text エントリは書けない",
 			body: "syntax:\n  cstyle:\n    files: [\"**/*.go\"]\n    mode: structural\n  text:\n    files: [\"**/*.txt\"]\n    mode: content-only\n",
 			want: "reserved name",
