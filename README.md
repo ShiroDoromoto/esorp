@@ -133,9 +133,9 @@ printf 'この関数はかつて同期だった。\n' | esorp check --text -
   変化を語っています。今のコードが何であるかだけを書いてください。
   「以前はこうだった」はバージョン管理が保持しています。
 
-1 件の違反
-当たったのは層2（語彙）だけです。層1（器・書式）は当たりません（渡された本文は器を持ちません）。
-baseline はありません（その場限りの入力なので、抑制のキーが立ちません）。
+1 violations
+Only layer 2 (lexicon) applied. Layer 1 (vessel and form) does not apply (the body passed in has no vessel).
+There is no baseline (a one-off input has no key for a suppression to stand on).
 ```
 
 当たるのは層2（語彙）だけです。素のテキストは器を持たないので、**層1（器・書式）は当たりません**。
@@ -300,11 +300,15 @@ esorp lexicon --try '(?i)previously'
 internal/store/index.go:3:1  place=doc kind=line
   // Append は、索引の末尾に足す。previously 書き出した領域は読み直さない。
 
-(?i)previously に 1 件が当たりました（71 ファイル / 605 コメント中 0.17%）
+(?i)previously matched 1 (71 files / 605 comments, 0.17%)
 
-面ごとの内訳:
-  cstyle              1 件 / 553 コメント（0.18%）
-  hash                0 件 / 52 コメント（0.00%）
+Breakdown by surface:
+  cstyle              1 / 553 comments (0.18%)
+  hash                0 / 52 comments (0.00%)
+
+The text surface (check --text) cannot be measured. The body passed in lives outside the tree, and there is no corpus to match against.
+Decide rules for this surface by reading the matches (this is not 0 matches — it is not measured).
+esorp does not judge true positive from false. Read the matches and decide whether to add the term.
 ```
 
 当たりを全部並べたあと、件数と、それが全コメントに占める割合を書きます。**真陽性か偽陽性かは
