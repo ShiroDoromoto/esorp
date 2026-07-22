@@ -4,6 +4,11 @@
 #
 # 引き金は人間が引く（配布と同じ）。dependabot が出すのは PR までで、
 # ci.yml がそれに当たる。緑を見てからマージする。
+#
+# その「緑を見てマージ」を、依存の上げについては人手から外す。ただし
+# dependabot.yml に自動マージの口は無い（automerge キーは v1 preview の遺物で、
+# 今の設定では黙って無視される）。実体は dependabot-automerge.yml が持ち、
+# PR に auto-merge を付けて CI の緑を待たせる。ここは PR を出すところまで。
 version: 2
 updates:
   - package-ecosystem: github-actions

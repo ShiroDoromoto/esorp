@@ -1,0 +1,28 @@
+# dependabot が出した依存の上げ PR に、auto-merge を付ける。
+#
+# auto-merge は「今すぐマージ」ではなく「必須チェックが緑になったらマージ」の予約。
+# だから ci.yml を必須チェックにしたブランチ保護が前提で、そこが CI の緑を待たせる。
+# 保護が無ければ緑を待たずに落ちるので、依存 PR の門番は branch protection 側にある。
+#
+# 手が触れるのは依存 PR だけ（dependabot が作者のときに限る）。リリースは人間が
+# 別に引く（release.yml）ので、ここが配布まで自動で進めることはない。
+name: Dependabot auto-merge
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    # dependabot の PR 以外はここで弾く。他人の PR に auto-merge は付けない。
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      # gh がマージ相手を知るための PR 番号だけ、ここで確定させる。
+      - name: auto-merge を付ける
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
