@@ -91,11 +91,11 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       # hook は language: golang。pre-commit は自前の env に esorp をビルドして呼ぶ。
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.x'
 
